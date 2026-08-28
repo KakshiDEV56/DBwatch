@@ -9,6 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"dbwatch/internal/collector"
+	"dbwatch/internal/config"
+	"dbwatch/internal/store"
 )
 
 type focusArea int
@@ -18,6 +20,7 @@ const (
 	focusPanels
 	focusLogs
 	focusSearch
+	focusAddDB
 )
 
 const minWidth, minHeight = 50, 16
@@ -83,6 +86,18 @@ type Model struct {
 	searchInput string
 	searchWasIn focusArea
 
+	// addDBInput is the DSN being typed into the welcome screen / "add
+	// database" overlay. addDBWasIn is where focus returns to on Esc
+	// (irrelevant on the welcome screen itself, since there's nowhere
+	// else to go with zero databases).
+	addDBInput string
+	addDBErr   string
+	addDBWasIn focusArea
+
+	// confirmRemove is the index into dbs pending a remove confirmation,
+	// or -1 when no confirmation is open.
+	confirmRemove int
+
 	logCursor     int
 	logAutoFollow bool
 
@@ -93,13 +108,38 @@ type Model struct {
 }
 
 func NewModel(ctx context.Context, dbs []*DBState, interval time.Duration) Model {
-	return Model{
+	m := Model{
 		ctx:           ctx,
 		dbs:           dbs,
 		interval:      interval,
 		focus:         focusPanels,
 		logAutoFollow: true,
+		confirmRemove: -1,
 	}
+	if len(dbs) == 0 {
+		// Nothing configured yet -- open straight onto the welcome
+		// screen's input instead of an empty dashboard.
+		m.focus = focusAddDB
+	}
+	return m
+}
+
+// databaseTargets converts the live DBState list back to the config
+// shape the store persists.
+func (m Model) databaseTargets() []config.Database {
+	targets := make([]config.Database, len(m.dbs))
+	for i, db := range m.dbs {
+		targets[i] = config.Database{Name: db.Name, Region: db.Region, DSN: db.DSN}
+	}
+	return targets
+}
+
+// saveDatabases persists the current database list. A failure (disk
+// full, permissions) is returned rather than panicking -- it shouldn't
+// take down a monitoring tool that's otherwise working fine; callers
+// surface it as a flash message.
+func (m *Model) saveDatabases() error {
+	return store.Save(m.databaseTargets())
 }
 
 func (m Model) currentDB() *DBState {

@@ -23,7 +23,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if m.detail != nil || m.focus == focusSearch {
+	if m.detail != nil || m.focus == focusSearch || m.focus == focusAddDB || m.confirmRemove >= 0 {
 		return m, nil
 	}
 	if msg.Action != tea.MouseActionPress {

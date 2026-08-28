@@ -107,6 +107,36 @@ func NewDBState(target config.Database) *DBState {
 	}
 }
 
+// ConnectDatabase builds the runtime state for one configured database
+// and opens its connection pool. Used identically whether the database
+// came from startup config or was just typed into the add-database
+// overlay at runtime -- there's only one code path for "start watching a
+// database," so the two can never drift apart.
+//
+// pgxpool.New only parses the DSN -- it does not connect eagerly, so it
+// failing means a malformed DSN, not an unreachable server. Reachability
+// (and recovery from unreachability) is handled by DBState.Bootstrap,
+// retried every tick from the TUI's poll loop -- a database that's down
+// now, or down at add-time, is picked up automatically once it responds.
+func ConnectDatabase(ctx context.Context, target config.Database) *DBState {
+	db := NewDBState(target)
+
+	pool, err := pgxpool.New(ctx, target.DSN)
+	if err != nil {
+		db.ConnectErr = fmt.Errorf("connect: %w", err)
+		return db
+	}
+
+	db.Pool = pool
+	db.Connections = collector.NewConnectionsCollector(pool)
+	db.Cache = collector.NewCacheCollector(pool)
+	db.Locks = collector.NewLocksCollector(pool)
+	db.Transactions = collector.NewTransactionsCollector(pool)
+	db.Queries = collector.NewQueriesCollector(pool, 5)
+	db.Activity = collector.NewActivityCollector(pool)
+	return db
+}
+
 // Uptime returns how long the Postgres server has been up, if known.
 func (d *DBState) Uptime() (time.Duration, bool) {
 	if !d.HasPostmaster {

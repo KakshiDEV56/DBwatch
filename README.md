@@ -107,32 +107,53 @@ The `Makefile` and `scripts/*.sh` (demo/test tooling, not the dbwatch
 binary itself) are bash and need `make`; on Windows, run them under
 WSL2 or Git Bash.
 
-## Quick start: demo environment
+## Quick start
 
-A ready-made three-database demo environment is included at the repo
-root, seeded with realistic e-commerce data.
+No config file to write by hand. Build it, run it, paste a connection
+string into the welcome screen:
 
 ```bash
-# 1. Start PostgreSQL (three databases: production, staging, analytics;
-#    pg_stat_statements preloaded; auto-seeded via scripts/seed.sql)
-docker compose up -d
-docker compose ps          # wait for "healthy"
-
-# 2. Optional: simulate connection activity (active / idle /
-#    idle-in-transaction sessions) so there's something live to watch
-./scripts/simulate-load.sh
-
-# 3. Run dbwatch against it
 go build -o dbwatch ./cmd/dbwatch
-./dbwatch start -config dbwatch.example.yaml -interval 3s
+./dbwatch start
+```
+
+dbwatch keeps its own list of databases in your per-user config
+directory (`~/.config/dbwatch/databases.yaml` on Linux, the platform
+equivalent elsewhere -- see [Cross-platform](#cross-platform)) and loads
+it automatically every time you start it. Add more later with `a` from
+inside the app; remove one by selecting it in the Databases table and
+pressing `d`, which asks for a yes/no confirmation first -- nothing is
+ever deleted from your list, or disconnected, without it.
+
+### Try it against realistic data
+
+A ready-made three-database demo environment (production/staging/
+analytics, seeded with e-commerce data) is included if you want
+something with real traffic to look at before pointing dbwatch at your
+own database:
+
+```bash
+docker compose up -d
+docker compose ps                 # wait for "healthy"
+./scripts/simulate-load.sh        # optional: active/idle/idle-in-tx traffic
+./dbwatch start                   # then add postgres://postgres:dbwatch@localhost:5432/dbwatch_demo
+                                   # from the welcome screen (or 'a' if you already have one)
 ```
 
 Tear down with `docker compose down -v`.
 
 ## Configuration
 
-dbwatch reads a YAML config file (default `dbwatch.yaml`, override with
-`-config`). Either a single database:
+For scripting, CI, or containers where an interactive welcome screen
+doesn't make sense, `-config`/`-dsn`/`DBWATCH_DSN` still work exactly as
+before -- layered on top of your saved list for that run, without being
+written to it:
+
+```bash
+./dbwatch start -dsn "postgres://user:password@localhost:5432/app" -interval 10s
+```
+
+`-config` points at a YAML file, either a single database:
 
 ```yaml
 database:
@@ -143,7 +164,7 @@ monitor:
   interval: 10s
 ```
 
-or several, watched concurrently:
+or several:
 
 ```yaml
 databases:
@@ -158,13 +179,6 @@ monitor:
   interval: 10s
 ```
 
-Flags: `-config <path>`, `-dsn <dsn>` (adds/overrides a single database
-without editing the file), `-interval <duration>`.
-
-```bash
-./dbwatch start -dsn "postgres://user:password@localhost:5432/app" -interval 10s
-```
-
 ## Keybindings
 
 | Key | Action |
@@ -172,6 +186,8 @@ without editing the file), `-interval <duration>`.
 | `h` / `l` | move focus between panels, database table, and logs |
 | `j` / `k` | navigate within the focused section |
 | `Enter` | inspect a log entry / confirm a database selection |
+| `a` | add a database (same input as the first-run welcome screen) |
+| `d` | remove the selected database, after a yes/no confirmation |
 | `Esc` | back / cancel |
 | `c` | copy the selected log entry or detail view to the clipboard |
 | `/` | search |

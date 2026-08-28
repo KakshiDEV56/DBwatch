@@ -20,8 +20,17 @@ func (m Model) View() string {
 	if m.detail != nil {
 		return m.detailView()
 	}
+	if len(m.dbs) == 0 {
+		return m.welcomeView()
+	}
 	if m.focus == focusSearch {
 		return m.searchView()
+	}
+	if m.focus == focusAddDB {
+		return m.addDBView()
+	}
+	if m.confirmRemove >= 0 {
+		return m.confirmRemoveView()
 	}
 
 	var b strings.Builder
@@ -457,6 +466,81 @@ func (m Model) detailView() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
+// addDBInputBody is the shared "type a DSN" input body used by both the
+// first-run welcome screen and the later "add another database" overlay
+// -- one input, one validation/error path, wherever it's shown from.
+func (m Model) addDBInputBody(width int) string {
+	var b strings.Builder
+	b.WriteString("> " + m.addDBInput + "▏")
+	if m.addDBErr != "" {
+		b.WriteString("\n\n" + critStyle.Render(truncate("✕ "+m.addDBErr, width)))
+	}
+	b.WriteString("\n\n" + dimStyle.Render("postgres://user:password@host:5432/database"))
+	return b.String()
+}
+
+// welcomeView is what a fresh install sees: no config file to write by
+// hand, no flags required -- type a connection string here and dbwatch
+// starts watching it immediately.
+func (m Model) welcomeView() string {
+	center := func(s string) string {
+		return lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(s)
+	}
+
+	wordmark := lipgloss.NewStyle().Bold(true).Foreground(theme.Foreground).
+		Render(strings.Join(strings.Split("DBWATCH", ""), " "))
+	tagline := dimStyle.Render("PostgreSQL observability, live in your terminal")
+	label := labelStyle.Render("Enter a PostgreSQL connection string to get started")
+
+	boxWidth := min(m.width-10, 60)
+	box := renderTitledBox("Connect", m.addDBInputBody(boxWidth-4), boxWidth, true, 0)
+
+	hint := keyStyle.Render("enter") + " " + dimStyle.Render("connect and start monitoring")
+
+	content := strings.Join([]string{
+		"",
+		center(wordmark),
+		center(tagline),
+		"",
+		center(label),
+		"",
+		lipgloss.PlaceHorizontal(m.width, lipgloss.Center, box),
+		"",
+		center(hint),
+	}, "\n")
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+}
+
+// addDBView is the same input as the welcome screen, opened later with
+// 'a' to add a second/third database once one is already running.
+func (m Model) addDBView() string {
+	width := min(m.width-10, 60)
+	box := renderTitledBox("Add Database", m.addDBInputBody(width-4)+"\n\n"+
+		keyStyle.Render("enter")+" "+dimStyle.Render("connect and save")+"   "+
+		keyStyle.Render("esc")+" "+dimStyle.Render("cancel"), width, true, 0)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+// confirmRemoveView guards deletion behind an explicit yes/no -- nothing
+// is ever removed from the dashboard or the saved store without this.
+func (m Model) confirmRemoveView() string {
+	if m.confirmRemove < 0 || m.confirmRemove >= len(m.dbs) {
+		return ""
+	}
+	db := m.dbs[m.confirmRemove]
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Remove %s from dbwatch?\n", labelStyle.Render(db.Name))
+	b.WriteString(dimStyle.Render(truncate(db.DSN, 50)) + "\n\n")
+	b.WriteString(dimStyle.Render("This stops monitoring it and removes it from your saved database list. It does not affect the database itself.") + "\n\n")
+	b.WriteString(warnStyle.Render("y") + " " + dimStyle.Render("yes, remove it") + "    " + okStyle.Render("n") + " " + dimStyle.Render("no, keep it"))
+
+	width := min(m.width-10, 64)
+	box := renderTitledBox("Remove Database", b.String(), width, true, 0)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
 // searchView is a centered input box -- typing filters logs in the
 // current panel and highlights matching databases live, before you even
 // press Enter.
@@ -515,11 +599,18 @@ func guideContent() []string {
 		keyRow("q", "quit") + "\n" +
 
 		labelStyle.Render("THE DATABASE TABLE") + "\n" +
-		"Every database in your config is polled on the same interval, all the\n" +
+		"Every database you've added is polled on the same interval, all the\n" +
 		"time -- not just the one you're currently looking at. The dot and\n" +
 		"status word next to each name always reflect that database's real,\n" +
 		"live state, even while you're looking at a different one. Selecting a\n" +
-		"row switches which database's panels and logs are shown below.\n\n" +
+		"row switches which database's panels and logs are shown below.\n" +
+		keyRow("a", "add another database (same input as the first-run welcome screen)") +
+		keyRow("d", "remove the selected database, after a yes/no confirmation") +
+		"There's no config file to hand-write: dbwatch keeps its own list of\n" +
+		"databases in your per-user config directory and loads it automatically\n" +
+		"every time you start it -- adding or removing one here is the only\n" +
+		"step. Removing a database only stops dbwatch watching it; it never\n" +
+		"touches the database itself.\n\n" +
 
 		labelStyle.Render("CONNECTIONS") + "\n" +
 		"How many connections PostgreSQL currently has open to THIS specific\n" +
@@ -667,8 +758,10 @@ func (m Model) statusBarView() string {
 		segs = []string{readModeStyle.Render("READ MODE ■"), kbd("j/k", "scroll"), kbd("h/l", "panel"), kbd("c", "copy"), kbd("m", "live"), kbd("q", "quit")}
 	case m.focus == focusLogs:
 		segs = []string{liveStyle.Render("LIVE ●"), kbd("j/k", "select"), kbd("Enter", "inspect"), kbd("c", "copy"), kbd("/", "search"), kbd("m", "read/live"), kbd("h", "back"), kbd("q", "quit")}
+	case m.focus == focusDBs:
+		segs = []string{liveStyle.Render("LIVE ●"), kbd("j/k", "select"), kbd("a", "add db"), kbd("d", "remove db"), kbd("Enter", "panels"), kbd("/", "search"), kbd("m", "read"), kbd("q", "quit")}
 	default:
-		segs = []string{liveStyle.Render("LIVE ●"), kbd("h/l", "panel"), kbd("j/k", "navigate"), kbd("Enter", "inspect"), kbd("/", "search"), kbd("r", "refresh"), kbd("m", "read"), kbd("?", "help"), kbd("q", "quit")}
+		segs = []string{liveStyle.Render("LIVE ●"), kbd("h/l", "panel"), kbd("j/k", "navigate"), kbd("Enter", "inspect"), kbd("a", "add db"), kbd("/", "search"), kbd("r", "refresh"), kbd("m", "read"), kbd("?", "help"), kbd("q", "quit")}
 	}
 	return statusBarStyle.Render(strings.Join(segs, sep))
 }

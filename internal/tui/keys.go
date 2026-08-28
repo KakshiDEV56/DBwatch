@@ -1,14 +1,25 @@
 package tui
 
 import (
+	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"dbwatch/internal/config"
 )
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.confirmRemove >= 0 {
+		return m.handleConfirmRemoveKey(msg)
+	}
 	if m.focus == focusSearch {
 		return m.handleSearchKey(msg)
+	}
+	if m.focus == focusAddDB {
+		return m.handleAddDBKey(msg)
 	}
 	if m.helpOpen {
 		lines := len(guideContent())
@@ -57,6 +68,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.lastUpdate = time.Now()
 		return m, tea.Batch(m.fetchAll()...)
+	case "a":
+		m.addDBWasIn = m.focus
+		m.addDBInput = ""
+		m.addDBErr = ""
+		m.focus = focusAddDB
+		return m, nil
 	case "/":
 		m.prevFocus = m.focus
 		m.searchWasIn = m.focus
@@ -116,6 +133,10 @@ func (m Model) handleDBsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveDB(-1)
 	case "enter":
 		m.focus = focusPanels
+	case "d":
+		if len(m.dbs) > 0 {
+			m.confirmRemove = m.selectedDB
+		}
 	}
 	return m, nil
 }
@@ -207,4 +228,111 @@ func (m Model) jumpSearch(dir int) Model {
 	m.logCursor = next
 	m.logAutoFollow = false
 	return m
+}
+
+// handleAddDBKey drives the welcome screen / "add database" overlay --
+// the same UI either way, the only difference is whether there's a
+// dashboard behind it to cancel back to.
+func (m Model) handleAddDBKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		if len(m.dbs) == 0 {
+			return m, nil // nothing to cancel back to yet
+		}
+		m.focus = m.addDBWasIn
+		m.addDBInput = ""
+		m.addDBErr = ""
+		return m, nil
+	case "enter":
+		return m.submitAddDB()
+	case "backspace":
+		if len(m.addDBInput) > 0 {
+			r := []rune(m.addDBInput)
+			m.addDBInput = string(r[:len(r)-1])
+		}
+		return m, nil
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.addDBInput += string(msg.Runes)
+		} else if msg.Type == tea.KeySpace {
+			m.addDBInput += " "
+		}
+		return m, nil
+	}
+}
+
+func (m Model) submitAddDB() (tea.Model, tea.Cmd) {
+	dsn := strings.TrimSpace(m.addDBInput)
+	if dsn == "" {
+		m.addDBErr = "enter a postgres:// connection string"
+		return m, nil
+	}
+
+	name := fmt.Sprintf("db%d", len(m.dbs)+1)
+	if u, err := url.Parse(dsn); err == nil {
+		if dbName := strings.TrimPrefix(u.Path, "/"); dbName != "" {
+			name = dbName
+		}
+	}
+	target := config.Database{Name: name, Region: "local", DSN: dsn}
+
+	// pgxpool.New only parses the DSN (no I/O), so this is safe to call
+	// synchronously without blocking the UI. A malformed DSN is caught
+	// immediately here; an unreachable-but-valid DSN is not an error --
+	// it's added and shown as "connecting..." like any other database,
+	// self-healing via the same Bootstrap retry every other database
+	// uses (see DBState.Bootstrap).
+	db := ConnectDatabase(m.ctx, target)
+	if db.ConnectErr != nil {
+		m.addDBErr = db.ConnectErr.Error()
+		return m, nil
+	}
+
+	m.dbs = append(m.dbs, db)
+	m.selectedDB = len(m.dbs) - 1
+	m.addDBInput = ""
+	m.addDBErr = ""
+	m.focus = focusPanels
+
+	flashMsg := "added " + target.Name
+	if err := m.saveDatabases(); err != nil {
+		flashMsg = "added, but could not save: " + err.Error()
+	}
+	cmds := m.fetchAll() // start collecting for it immediately, don't wait for the next tick
+	cmds = append(cmds, m.setFlash(flashMsg))
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "enter":
+		idx := m.confirmRemove
+		m.confirmRemove = -1
+		if idx < 0 || idx >= len(m.dbs) {
+			return m, nil
+		}
+		removed := m.dbs[idx]
+		if removed.Pool != nil {
+			removed.Pool.Close()
+		}
+		m.dbs = append(m.dbs[:idx], m.dbs[idx+1:]...)
+		if m.selectedDB >= len(m.dbs) {
+			m.selectedDB = len(m.dbs) - 1
+		}
+		if m.selectedDB < 0 {
+			m.selectedDB = 0
+		}
+		if len(m.dbs) == 0 {
+			m.focus = focusAddDB
+		}
+
+		flashMsg := "removed " + removed.Name
+		if err := m.saveDatabases(); err != nil {
+			flashMsg = "removed, but could not save: " + err.Error()
+		}
+		return m, m.setFlash(flashMsg)
+	case "n", "esc":
+		m.confirmRemove = -1
+	}
+	return m, nil
 }

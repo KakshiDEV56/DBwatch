@@ -11,10 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"dbwatch/internal/collector"
 	"dbwatch/internal/config"
+	"dbwatch/internal/store"
 	"dbwatch/internal/tui"
 )
 
@@ -42,74 +40,62 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `Usage: dbwatch start [flags]
 
-Flags:
-  -config string    path to config file (default "dbwatch.yaml")
-  -dsn string        Postgres DSN, adds/overrides the "default" database entry
-  -interval duration polling interval, overrides config file (default 10s)
+With no arguments, dbwatch loads whatever databases you've previously
+added (press 'a' inside the app to add one -- no config file needed) from
+its own per-user config directory. Run with zero databases configured and
+it shows a welcome screen to add your first one.
 
-Config supports either a single "database:" block or a "databases:" list —
-see dbwatch.example.yaml.`)
+Flags:
+  -config string    path to an additional config file (optional)
+  -dsn string        Postgres DSN, adds a database for just this run
+  -interval duration polling interval (default 10s)
+
+-config/-dsn databases are layered on top of your saved list for this
+run; they are not saved unless added again from within the app.`)
 }
 
 func runStart(args []string) error {
 	fs := flag.NewFlagSet("start", flag.ExitOnError)
-	configPath := fs.String("config", "dbwatch.yaml", "path to config file")
-	dsnFlag := fs.String("dsn", "", "Postgres DSN")
+	configPath := fs.String("config", "", "path to an additional config file")
+	dsnFlag := fs.String("dsn", "", "Postgres DSN for this run")
 	intervalFlag := fs.Duration("interval", 0, "polling interval")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	cfg, err := config.Load(*configPath)
+	saved, err := store.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("load saved databases: %w", err)
 	}
+	targets := append([]config.Database{}, saved...)
 
+	interval := 10 * time.Second
+	if *configPath != "" {
+		cfg, err := config.Load(*configPath)
+		if err != nil {
+			return err
+		}
+		targets = append(targets, cfg.Databases...)
+		if cfg.Monitor.Interval > 0 {
+			interval = cfg.Monitor.Interval
+		}
+	}
 	if *dsnFlag != "" {
-		cfg.Databases = append(cfg.Databases, config.Database{Name: "default", Region: "local", DSN: *dsnFlag})
+		targets = append(targets, config.Database{Name: "default", Region: "local", DSN: *dsnFlag})
 	}
-	if dsn := os.Getenv("DBWATCH_DSN"); dsn != "" && len(cfg.Databases) == 0 {
-		cfg.Databases = append(cfg.Databases, config.Database{Name: "default", Region: "local", DSN: dsn})
+	if dsn := os.Getenv("DBWATCH_DSN"); dsn != "" && len(targets) == 0 {
+		targets = append(targets, config.Database{Name: "default", Region: "local", DSN: dsn})
 	}
-	if len(cfg.Databases) == 0 {
-		return fmt.Errorf("no database configured (use -dsn, DBWATCH_DSN, or database(s) in %s)", *configPath)
-	}
-
-	interval := cfg.Monitor.Interval
 	if *intervalFlag > 0 {
 		interval = *intervalFlag
-	}
-	if interval <= 0 {
-		interval = 10 * time.Second
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	dbs := make([]*tui.DBState, 0, len(cfg.Databases))
-	for _, target := range cfg.Databases {
-		db := tui.NewDBState(target)
-		dbs = append(dbs, db)
-
-		// pgxpool.New only parses the DSN — it does not connect eagerly, so
-		// this failing means a malformed config, not an unreachable server.
-		// Reachability (and recovery from unreachability) is handled by
-		// DBState.Bootstrap, retried every tick from the TUI's poll loop —
-		// a database that's down now, or down at launch, is picked up
-		// automatically once it responds.
-		pool, err := pgxpool.New(ctx, target.DSN)
-		if err != nil {
-			db.ConnectErr = fmt.Errorf("connect: %w", err)
-			continue
-		}
-
-		db.Pool = pool
-		db.Connections = collector.NewConnectionsCollector(pool)
-		db.Cache = collector.NewCacheCollector(pool)
-		db.Locks = collector.NewLocksCollector(pool)
-		db.Transactions = collector.NewTransactionsCollector(pool)
-		db.Queries = collector.NewQueriesCollector(pool, 5)
-		db.Activity = collector.NewActivityCollector(pool)
+	dbs := make([]*tui.DBState, 0, len(targets))
+	for _, target := range targets {
+		dbs = append(dbs, tui.ConnectDatabase(ctx, target))
 	}
 	defer func() {
 		for _, db := range dbs {
@@ -119,5 +105,8 @@ func runStart(args []string) error {
 		}
 	}()
 
+	// Zero databases is not an error -- dbwatch shows its welcome screen
+	// and lets the user add one right there, rather than requiring a
+	// config file to exist before it will even start.
 	return tui.Run(ctx, dbs, interval)
 }
