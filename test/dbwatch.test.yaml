@@ -1,0 +1,19 @@
+databases:
+  - name: production
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_production
+  - name: staging
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_staging
+  - name: analytics
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_analytics
+  - name: development
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_development
+  - name: stress
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_stress
+
+monitor:
+  interval: 3s

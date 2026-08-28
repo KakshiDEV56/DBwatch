@@ -1,0 +1,11 @@
+# Build artifacts
+/dbwatch
+/dbwatch-test
+
+# Go
+*.test
+*.out
+
+# OS / editor
+.DS_Store
+*.swp

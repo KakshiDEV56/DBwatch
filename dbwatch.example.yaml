@@ -1,0 +1,13 @@
+databases:
+  - name: production
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5432/dbwatch_demo
+  - name: staging
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5432/dbwatch_staging
+  - name: analytics
+    region: local
+    dsn: postgres://postgres:dbwatch@localhost:5432/dbwatch_analytics
+
+monitor:
+  interval: 5s

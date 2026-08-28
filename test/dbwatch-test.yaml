@@ -1,0 +1,33 @@
+safety:
+  require_env: DBWATCH_TEST_ENV
+  allowed_hosts:
+    - localhost
+    - 127.0.0.1
+  allowed_databases:
+    - dbwatch_test_production
+    - dbwatch_test_staging
+    - dbwatch_test_analytics
+    - dbwatch_test_development
+    - dbwatch_test_stress
+
+databases:
+  - name: production
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_production
+  - name: staging
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_staging
+  - name: analytics
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_analytics
+  - name: development
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_development
+  - name: stress
+    dsn: postgres://postgres:dbwatch@localhost:5433/dbwatch_test_stress
+
+workload:
+  workers: 10
+  qps: 50
+
+thresholds:
+  slow_query: 500ms
+  long_transaction: 30s
+  connection_warning: 0.70
+  connection_critical: 0.90

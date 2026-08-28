@@ -1,0 +1,274 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"dbwatch/internal/collector"
+	"dbwatch/internal/config"
+)
+
+// DBState is the live, per-database runtime state the dashboard renders:
+// connection pool, collectors, latest snapshots, and each panel's log
+// stream. One exists per configured database and all are polled every
+// interval regardless of which one is currently selected.
+type DBState struct {
+	Name   string
+	Region string
+	DSN    string
+
+	Pool         *pgxpool.Pool
+	Connections  *collector.ConnectionsCollector
+	Cache        *collector.CacheCollector
+	Queries      *collector.QueriesCollector
+	Locks        *collector.LocksCollector
+	Transactions *collector.TransactionsCollector
+
+	ConnectErr    error
+	Bootstrapped  bool
+	QueryExtWarn  string
+	Version       string
+	Host          string
+	Port          uint16
+	Database      string
+	User          string
+	PostmasterUp  time.Time
+	HasPostmaster bool
+
+	ConnStats  collector.ConnectionStats
+	ConnErr    error
+	ConnLoaded bool
+
+	CacheStats  collector.CacheStats
+	CacheErr    error
+	CacheLoaded bool
+
+	QueryStats  []collector.QueryStat
+	QueryErr    error
+	QueryLoaded bool
+
+	LockStats  []collector.BlockedLock
+	LockErr    error
+	LockLoaded bool
+
+	TxStats  []collector.LongTransaction
+	TxErr    error
+	TxLoaded bool
+
+	Logs map[PanelKind]*LogBuffer
+
+	// change-detection state, used to decide what's worth logging rather
+	// than re-logging an unchanged "healthy" reading every tick.
+	connLogged     bool
+	connLastSev    Severity
+	cacheLogged    bool
+	cacheLastSev   Severity
+	queryLastCall  map[string]int64
+	queryBaseline  bool
+	queryErrLogged bool
+	queryLastSev   Severity
+	locksLogged    bool
+	locksLastState string
+	txLogged       bool
+	txLastState    string
+}
+
+// NewDBState creates the runtime state for one configured database. The
+// caller is responsible for setting Pool and the five collectors once
+// connected.
+func NewDBState(target config.Database) *DBState {
+	logs := make(map[PanelKind]*LogBuffer, len(allPanels))
+	for _, p := range allPanels {
+		logs[p] = &LogBuffer{}
+	}
+	return &DBState{
+		Name:          target.Name,
+		Region:        target.Region,
+		DSN:           target.DSN,
+		Logs:          logs,
+		queryLastCall: make(map[string]int64),
+	}
+}
+
+// Uptime returns how long the Postgres server has been up, if known.
+func (d *DBState) Uptime() (time.Duration, bool) {
+	if !d.HasPostmaster {
+		return 0, false
+	}
+	return time.Since(d.PostmasterUp), true
+}
+
+// OverallSeverity is the worst severity across every panel — drives the
+// sidebar database list's status dot.
+func (d *DBState) OverallSeverity() Severity {
+	if d.ConnectErr != nil {
+		return SeverityError
+	}
+	worst := SeverityOK
+	for _, p := range allPanels {
+		if sev := d.PanelSeverity(p); sev > worst {
+			worst = sev
+		}
+	}
+	return worst
+}
+
+func (d *DBState) PanelSeverity(k PanelKind) Severity {
+	switch k {
+	case PanelConnections:
+		if d.ConnErr != nil {
+			return SeverityError
+		}
+		if !d.ConnLoaded {
+			return SeverityInfo
+		}
+		pct := d.ConnStats.UtilizationPercent()
+		switch {
+		case pct >= 90:
+			return SeverityCritical
+		case pct >= 70:
+			return SeverityWarning
+		default:
+			return SeverityOK
+		}
+	case PanelCache:
+		if d.CacheErr != nil {
+			return SeverityError
+		}
+		if !d.CacheLoaded {
+			return SeverityInfo
+		}
+		pct := d.CacheStats.HitRatio()
+		switch {
+		case pct >= 99:
+			return SeverityOK
+		case pct >= 95:
+			return SeverityWarning
+		default:
+			return SeverityCritical
+		}
+	case PanelQueries:
+		if d.QueryExtWarn != "" {
+			return SeverityWarning
+		}
+		if d.QueryErr != nil {
+			return SeverityError
+		}
+		return SeverityInfo
+	case PanelLocks:
+		if d.LockErr != nil {
+			return SeverityError
+		}
+		if !d.LockLoaded {
+			return SeverityInfo
+		}
+		if len(d.LockStats) > 0 {
+			return SeverityCritical
+		}
+		return SeverityOK
+	case PanelTransactions:
+		if d.TxErr != nil {
+			return SeverityError
+		}
+		if !d.TxLoaded {
+			return SeverityInfo
+		}
+		if len(d.TxStats) > 0 {
+			return SeverityWarning
+		}
+		return SeverityOK
+	}
+	return SeverityInfo
+}
+
+// PanelSummary is the one-line status shown on the panel's sidebar card.
+func (d *DBState) PanelSummary(k PanelKind) string {
+	switch k {
+	case PanelConnections:
+		if d.ConnErr != nil {
+			return "collection error"
+		}
+		if !d.ConnLoaded {
+			return "loading…"
+		}
+		return fmt.Sprintf("%d / %d (%.0f%%)", d.ConnStats.Total, d.ConnStats.MaxConnections, d.ConnStats.UtilizationPercent())
+	case PanelCache:
+		if d.CacheErr != nil {
+			return "collection error"
+		}
+		if !d.CacheLoaded {
+			return "loading…"
+		}
+		return fmt.Sprintf("%.1f%% hit", d.CacheStats.HitRatio())
+	case PanelQueries:
+		if d.QueryExtWarn != "" {
+			return "disabled — see warning"
+		}
+		if d.QueryErr != nil {
+			return "collection error"
+		}
+		if !d.QueryLoaded {
+			return "loading…"
+		}
+		return fmt.Sprintf("%d tracked", len(d.QueryStats))
+	case PanelLocks:
+		if d.LockErr != nil {
+			return "collection error"
+		}
+		if !d.LockLoaded {
+			return "loading…"
+		}
+		if len(d.LockStats) == 0 {
+			return "no lock contention detected"
+		}
+		return fmt.Sprintf("%d blocked", len(d.LockStats))
+	case PanelTransactions:
+		if d.TxErr != nil {
+			return "collection error"
+		}
+		if !d.TxLoaded {
+			return "loading…"
+		}
+		if len(d.TxStats) == 0 {
+			return "none"
+		}
+		return fmt.Sprintf("%d long-running", len(d.TxStats))
+	}
+	return ""
+}
+
+const versionQuery = `SELECT current_setting('server_version'), pg_postmaster_start_time()`
+
+// Bootstrap fetches server identity (version, uptime) and enables
+// pg_stat_statements. It is retried every tick until it succeeds, rather
+// than running once at startup — a database that's unreachable when
+// dbwatch launches must still be picked up automatically once it comes
+// back, exactly like a database that goes down mid-session.
+func (d *DBState) Bootstrap(ctx context.Context) error {
+	if d.Pool == nil {
+		return fmt.Errorf("no pool")
+	}
+	cfg := d.Pool.Config().ConnConfig
+	d.Host, d.Port, d.Database, d.User = cfg.Host, cfg.Port, cfg.Database, cfg.User
+
+	var version string
+	var start time.Time
+	if err := d.Pool.QueryRow(ctx, versionQuery).Scan(&version, &start); err != nil {
+		return fmt.Errorf("identity query: %w", err)
+	}
+	d.Version = version
+	d.PostmasterUp = start
+	d.HasPostmaster = true
+
+	if d.Queries != nil {
+		if err := d.Queries.EnsureExtension(ctx); err != nil {
+			d.QueryExtWarn = err.Error()
+		} else {
+			d.QueryExtWarn = ""
+		}
+	}
+	return nil
+}
