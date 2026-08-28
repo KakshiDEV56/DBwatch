@@ -251,6 +251,31 @@ make clean-test   # tears down only the dedicated test container/volumes
   configured interval (for example, PostgreSQL's own sub-second deadlock
   resolution) may not be observed.
 
+## Third-party libraries
+
+Everything dbwatch's own code imports directly, verified against each
+module's actual `LICENSE` file rather than assumed:
+
+| Library | Used for | License |
+|---|---|---|
+| [`charmbracelet/bubbletea`](https://github.com/charmbracelet/bubbletea) | TUI event loop the whole dashboard runs on | [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/charmbracelet/bubbletea/blob/master/LICENSE) |
+| [`charmbracelet/lipgloss`](https://github.com/charmbracelet/lipgloss) | Terminal styling -- borders, color, layout | [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/charmbracelet/lipgloss/blob/master/LICENSE) |
+| [`jackc/pgx`](https://github.com/jackc/pgx) | PostgreSQL driver -- speaks the wire protocol directly, no `libpq`/cgo | [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/jackc/pgx/blob/master/LICENSE) |
+| [`muesli/termenv`](https://github.com/muesli/termenv) | Terminal color-profile detection + OSC52 clipboard copy | [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/muesli/termenv/blob/master/LICENSE) |
+| [`go-yaml/yaml`](https://github.com/go-yaml/yaml) (`gopkg.in/yaml.v3`) | Config file parsing | [![MIT/Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue.svg)](https://github.com/go-yaml/yaml/blob/v3/LICENSE) |
+
+Each of those pulls in further packages of its own (ANSI parsing,
+terminal detection, Unicode width tables, and so on) -- roughly 20 in
+total, every one of them MIT, BSD-3-Clause, or Apache-2.0, checked the
+same way. That full transitive list isn't hand-copied here, since a
+manually maintained copy would drift out of date the moment a dependency
+updates -- it's always current straight from the toolchain:
+
+```bash
+go list -m all   # every module in the build graph
+go mod graph     # who depends on what
+```
+
 ## License
 
 Distributed under the MIT License. See [`LICENSE`](LICENSE) for the full
