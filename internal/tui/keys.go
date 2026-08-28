@@ -11,9 +11,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchKey(msg)
 	}
 	if m.helpOpen {
+		lines := len(guideContent())
 		switch msg.String() {
 		case "?", "esc", "q":
 			m.helpOpen = false
+		case "j", "down":
+			if m.helpOffset < lines-1 {
+				m.helpOffset++
+			}
+		case "k", "up":
+			if m.helpOffset > 0 {
+				m.helpOffset--
+			}
+		case "G":
+			m.helpOffset = lines - 1
+		case "g":
+			m.helpOffset = 0
 		}
 		return m, nil
 	}
@@ -36,6 +49,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.helpOpen = true
+		m.helpOffset = 0
 		return m, nil
 	case "m":
 		m.readMode = !m.readMode
@@ -97,15 +111,9 @@ func prevFocus(f focusArea) focusArea {
 func (m Model) handleDBsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
-		if m.selectedDB < len(m.dbs)-1 {
-			m.selectedDB++
-			m.resetLogPosition()
-		}
+		m.moveDB(1)
 	case "k", "up":
-		if m.selectedDB > 0 {
-			m.selectedDB--
-			m.resetLogPosition()
-		}
+		m.moveDB(-1)
 	case "enter":
 		m.focus = focusPanels
 	}
@@ -115,15 +123,9 @@ func (m Model) handleDBsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handlePanelsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
-		if m.selectedPanel < len(allPanels)-1 {
-			m.selectedPanel++
-			m.resetLogPosition()
-		}
+		m.movePanel(1)
 	case "k", "up":
-		if m.selectedPanel > 0 {
-			m.selectedPanel--
-			m.resetLogPosition()
-		}
+		m.movePanel(-1)
 	case "enter":
 		m.focus = focusLogs
 	}
@@ -134,15 +136,9 @@ func (m Model) handleLogsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	entries := m.filteredEntries()
 	switch msg.String() {
 	case "j", "down":
-		if m.logCursor < len(entries)-1 {
-			m.logCursor++
-		}
-		m.logAutoFollow = m.logCursor >= len(entries)-1
+		m.moveLog(1)
 	case "k", "up":
-		if m.logCursor > 0 {
-			m.logCursor--
-		}
-		m.logAutoFollow = false
+		m.moveLog(-1)
 	case "G":
 		m.logCursor = len(entries) - 1
 		m.logAutoFollow = true
@@ -164,7 +160,6 @@ func (m Model) handleLogsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) resetLogPosition() {
 	entries := m.filteredEntries()
 	m.logCursor = len(entries) - 1
-	m.logOffset = 0
 	m.logAutoFollow = true
 }
 

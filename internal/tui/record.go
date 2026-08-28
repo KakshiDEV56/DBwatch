@@ -7,6 +7,59 @@ import (
 	"dbwatch/internal/collector"
 )
 
+// sparklineHistoryLimit bounds every rolling history slice -- sparklines
+// only ever show real samples, and this keeps memory bounded regardless
+// of session length.
+const sparklineHistoryLimit = 30
+
+func appendHistory(h []float64, v float64) []float64 {
+	h = append(h, v)
+	if len(h) > sparklineHistoryLimit {
+		h = h[len(h)-sparklineHistoryLimit:]
+	}
+	return h
+}
+
+// RecordActivity derives per-second rates by diffing this snapshot
+// against the previous one -- pg_stat_database's counters are cumulative
+// since the last stats reset, not point-in-time, so a single snapshot
+// alone can't say anything about current load.
+func (d *DBState) RecordActivity(stats collector.ActivityStats, err error) {
+	d.ActivityErr = err
+	if err != nil {
+		return
+	}
+
+	now := time.Now()
+	if !d.prevActivityAt.IsZero() {
+		elapsed := now.Sub(d.prevActivityAt).Seconds()
+		if elapsed > 0 {
+			xactDelta := (stats.XactCommit + stats.XactRollback) - (d.prevActivity.XactCommit + d.prevActivity.XactRollback)
+			tupDelta := (stats.TupReturned + stats.TupFetched + stats.TupInserted + stats.TupUpdated + stats.TupDeleted) -
+				(d.prevActivity.TupReturned + d.prevActivity.TupFetched + d.prevActivity.TupInserted + d.prevActivity.TupUpdated + d.prevActivity.TupDeleted)
+			tempDelta := stats.TempBytes - d.prevActivity.TempBytes
+
+			d.XactPerSec = rateOrZero(xactDelta, elapsed)
+			d.TuplesPerSec = rateOrZero(tupDelta, elapsed)
+			d.TempBytesRate = rateOrZero(tempDelta, elapsed)
+			d.LoadLoaded = true
+		}
+	}
+	d.Deadlocks = stats.Deadlocks
+	d.prevActivity = stats
+	d.prevActivityAt = now
+}
+
+func rateOrZero(delta int64, elapsedSeconds float64) float64 {
+	if delta < 0 {
+		// A counter went backwards -- pg_stat_database was reset
+		// (pg_stat_reset(), or the server restarted). Report 0 rather
+		// than a nonsensical negative number for this one tick.
+		return 0
+	}
+	return float64(delta) / elapsedSeconds
+}
+
 // RecordConnections stores the latest snapshot and appends a log entry on
 // first load or when severity changes (including transitioning into or
 // out of a collection error), so the log stays a record of events rather
@@ -16,6 +69,8 @@ func (d *DBState) RecordConnections(stats collector.ConnectionStats, err error) 
 	d.ConnStats, d.ConnErr, d.ConnLoaded = stats, err, true
 	if err != nil {
 		d.Bootstrapped = false
+	} else {
+		d.ConnHistory = appendHistory(d.ConnHistory, stats.UtilizationPercent())
 	}
 
 	sev := d.PanelSeverity(PanelConnections)
@@ -49,6 +104,8 @@ func (d *DBState) RecordCache(stats collector.CacheStats, err error) {
 	d.CacheStats, d.CacheErr, d.CacheLoaded = stats, err, true
 	if err != nil {
 		d.Bootstrapped = false
+	} else {
+		d.CacheHistory = appendHistory(d.CacheHistory, stats.HitRatio())
 	}
 
 	sev := d.PanelSeverity(PanelCache)

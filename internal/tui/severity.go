@@ -2,16 +2,21 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// Severity is dbwatch's consistent status level, used everywhere a metric
-// or event needs a state. Symbols are shown alongside color so the meaning
-// survives a monochrome terminal.
+// Severity is dbwatch's single status system -- every metric, panel, and
+// event maps onto exactly these six levels, each with one fixed
+// symbol/color/label. Nothing in the UI invents its own ad hoc status
+// color; everything goes through this type.
 type Severity int
 
 const (
 	SeverityInfo Severity = iota
 	SeverityOK
 	SeverityWarning
+	SeverityDegraded
 	SeverityCritical
+	// SeverityError means the database itself is unreachable
+	// ("offline") -- distinct from a warning/critical reading on a
+	// database that's still responding.
 	SeverityError
 )
 
@@ -21,10 +26,12 @@ func (s Severity) Symbol() string {
 		return "✓"
 	case SeverityWarning:
 		return "⚠"
-	case SeverityCritical:
+	case SeverityDegraded:
 		return "▲"
-	case SeverityError:
+	case SeverityCritical:
 		return "✕"
+	case SeverityError:
+		return "○"
 	default:
 		return "●"
 	}
@@ -36,10 +43,12 @@ func (s Severity) Label() string {
 		return "healthy"
 	case SeverityWarning:
 		return "warning"
+	case SeverityDegraded:
+		return "degraded"
 	case SeverityCritical:
 		return "critical"
 	case SeverityError:
-		return "error"
+		return "offline"
 	default:
 		return "info"
 	}
@@ -51,10 +60,12 @@ func (s Severity) Style() lipgloss.Style {
 		return okStyle
 	case SeverityWarning:
 		return warnStyle
+	case SeverityDegraded:
+		return lipgloss.NewStyle().Bold(true).Foreground(theme.Degraded)
 	case SeverityCritical, SeverityError:
 		return critStyle
 	default:
-		return dimStyle
+		return infoStyle
 	}
 }
 

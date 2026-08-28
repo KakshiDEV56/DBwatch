@@ -1,4 +1,4 @@
-.PHONY: build test-build test-up test-down seed workload watch \
+.PHONY: build test-build dist test-up test-down seed workload watch \
 	test-locks test-deadlock test-long-tx test-idle-tx test-errors \
 	test-connections test-growth test-failure test-all clean-test
 
@@ -7,6 +7,21 @@ build:
 
 test-build:
 	go build -o dbwatch-test ./test/cmd/dbwatch-test
+
+# Cross-compiled release binaries for every supported platform. dbwatch
+# has no cgo dependencies (pgx speaks the Postgres wire protocol directly,
+# no libpq; Bubble Tea/Lip Gloss are pure Go), so this needs nothing but
+# the Go toolchain -- no per-platform build machine, no Docker, no
+# cross-compiler. Verify a target actually builds before shipping it, not
+# just that the OS/arch pair looks plausible.
+dist:
+	mkdir -p dist
+	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -o dist/dbwatch-linux-amd64       ./cmd/dbwatch
+	CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -o dist/dbwatch-linux-arm64       ./cmd/dbwatch
+	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -o dist/dbwatch-darwin-amd64      ./cmd/dbwatch
+	CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o dist/dbwatch-darwin-arm64      ./cmd/dbwatch
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/dbwatch-windows-amd64.exe ./cmd/dbwatch
+	@echo "built: $$(ls dist)"
 
 # Bring up the dedicated test PostgreSQL container (test/postgres/).
 test-up:

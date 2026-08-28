@@ -82,6 +82,31 @@ cd dbwatch
 go build -o dbwatch ./cmd/dbwatch
 ```
 
+### Cross-platform
+
+dbwatch runs natively on Linux, macOS, and Windows -- there's no
+platform-specific code to maintain: the PostgreSQL driver (`pgx`) speaks
+the wire protocol directly rather than wrapping `libpq`, so there's no
+cgo anywhere in the dependency tree, and the TUI framework (Bubble Tea /
+Lip Gloss) handles per-OS terminal capability detection (colors, mouse,
+Windows' virtual terminal sequences) internally. Clipboard copy uses
+OSC52 (a terminal escape sequence), so it works wherever the *terminal
+emulator* supports it, not conditional on the OS.
+
+Build a release binary for every platform from any single machine:
+
+```bash
+make dist
+```
+
+produces `dist/dbwatch-{linux,darwin}-{amd64,arm64}` and
+`dist/dbwatch-windows-amd64.exe`. Each is a static binary -- no runtime
+dependencies to install alongside it.
+
+The `Makefile` and `scripts/*.sh` (demo/test tooling, not the dbwatch
+binary itself) are bash and need `make`; on Windows, run them under
+WSL2 or Git Bash.
+
 ## Quick start: demo environment
 
 A ready-made three-database demo environment is included at the repo

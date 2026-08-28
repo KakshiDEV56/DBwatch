@@ -1,6 +1,7 @@
 # Build artifacts
 /dbwatch
 /dbwatch-test
+/dist/
 
 # Go
 *.test

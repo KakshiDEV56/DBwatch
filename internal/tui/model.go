@@ -20,7 +20,7 @@ const (
 	focusSearch
 )
 
-const minWidth, minHeight = 70, 20
+const minWidth, minHeight = 50, 16
 
 type connResult struct {
 	db    int
@@ -47,6 +47,11 @@ type txResult struct {
 	stats []collector.LongTransaction
 	err   error
 }
+type activityResult struct {
+	db    int
+	stats collector.ActivityStats
+	err   error
+}
 
 type bootstrapResult struct {
 	db  int
@@ -71,13 +76,13 @@ type Model struct {
 
 	detail *LogEntry
 
-	helpOpen bool
+	helpOpen   bool
+	helpOffset int
 
 	searchQuery string
 	searchInput string
 	searchWasIn focusArea
 
-	logOffset     int
 	logCursor     int
 	logAutoFollow bool
 
@@ -152,6 +157,10 @@ func (m Model) fetchAll() []tea.Cmd {
 				stats, err := db.Transactions.Collect(m.ctx)
 				return txResult{i, stats, err}
 			},
+			func() tea.Msg {
+				stats, err := db.Activity.Collect(m.ctx)
+				return activityResult{i, stats, err}
+			},
 		)
 		// Gated on Bootstrapped, not just QueryExtWarn=="" -- both start
 		// empty/false together, so without this the very first tick fires
@@ -223,6 +232,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dbs[msg.db].RecordTransactions(msg.stats, msg.err)
 		m.syncLogCursor()
 		return m, nil
+	case activityResult:
+		m.dbs[msg.db].RecordActivity(msg.stats, msg.err)
+		return m, nil
 	case bootstrapResult:
 		if msg.err == nil {
 			m.dbs[msg.db].Bootstrapped = true
@@ -231,6 +243,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	}
 	return m, nil
 }
@@ -260,7 +275,7 @@ func (m *Model) setFlash(s string) tea.Cmd {
 // is cancelled.
 func Run(ctx context.Context, dbs []*DBState, interval time.Duration) error {
 	m := NewModel(ctx, dbs, interval)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	go func() {
 		<-ctx.Done()

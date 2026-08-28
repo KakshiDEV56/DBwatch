@@ -1,12 +1,27 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
 
 func fmtDuration(d time.Duration) string {
 	return d.Round(time.Millisecond).String()
+}
+
+// humanRate formats a bytes/second rate compactly, e.g. "12.3 KB/s".
+func humanRate(bytesPerSec float64) string {
+	const unit = 1024.0
+	if bytesPerSec < unit {
+		return fmt.Sprintf("%.0f B/s", bytesPerSec)
+	}
+	div, exp := unit, 0
+	for n := bytesPerSec / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB/s", bytesPerSec/div, "KMGTPE"[exp])
 }
 
 // truncate collapses embedded whitespace/newlines (multi-line SQL becomes

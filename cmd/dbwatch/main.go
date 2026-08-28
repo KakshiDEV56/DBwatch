@@ -109,6 +109,7 @@ func runStart(args []string) error {
 		db.Locks = collector.NewLocksCollector(pool)
 		db.Transactions = collector.NewTransactionsCollector(pool)
 		db.Queries = collector.NewQueriesCollector(pool, 5)
+		db.Activity = collector.NewActivityCollector(pool)
 	}
 	defer func() {
 		for _, db := range dbs {

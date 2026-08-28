@@ -26,6 +26,7 @@ type DBState struct {
 	Queries      *collector.QueriesCollector
 	Locks        *collector.LocksCollector
 	Transactions *collector.TransactionsCollector
+	Activity     *collector.ActivityCollector
 
 	ConnectErr    error
 	Bootstrapped  bool
@@ -38,13 +39,15 @@ type DBState struct {
 	PostmasterUp  time.Time
 	HasPostmaster bool
 
-	ConnStats  collector.ConnectionStats
-	ConnErr    error
-	ConnLoaded bool
+	ConnStats   collector.ConnectionStats
+	ConnErr     error
+	ConnLoaded  bool
+	ConnHistory []float64 // recent UtilizationPercent readings, oldest first
 
-	CacheStats  collector.CacheStats
-	CacheErr    error
-	CacheLoaded bool
+	CacheStats   collector.CacheStats
+	CacheErr     error
+	CacheLoaded  bool
+	CacheHistory []float64 // recent HitRatio readings, oldest first
 
 	QueryStats  []collector.QueryStat
 	QueryErr    error
@@ -57,6 +60,17 @@ type DBState struct {
 	TxStats  []collector.LongTransaction
 	TxErr    error
 	TxLoaded bool
+
+	// Load: derived rates from consecutive ActivityStats snapshots. Not
+	// meaningful until two snapshots exist (LoadLoaded).
+	ActivityErr    error
+	LoadLoaded     bool
+	XactPerSec     float64
+	TuplesPerSec   float64
+	TempBytesRate  float64
+	Deadlocks      int64
+	prevActivity   collector.ActivityStats
+	prevActivityAt time.Time
 
 	Logs map[PanelKind]*LogBuffer
 
@@ -128,7 +142,9 @@ func (d *DBState) PanelSeverity(k PanelKind) Severity {
 		pct := d.ConnStats.UtilizationPercent()
 		switch {
 		case pct >= 90:
-			return SeverityCritical
+			return SeverityCritical // near exhaustion -- genuinely severe
+		case pct >= 80:
+			return SeverityDegraded
 		case pct >= 70:
 			return SeverityWarning
 		default:
@@ -147,8 +163,13 @@ func (d *DBState) PanelSeverity(k PanelKind) Severity {
 			return SeverityOK
 		case pct >= 95:
 			return SeverityWarning
+		case pct >= 85:
+			return SeverityDegraded
 		default:
-			return SeverityCritical
+			// A cache miss rate this high is a real problem, but it's
+			// not "database unavailable" -- red is reserved for that,
+			// per dbwatch's color semantics.
+			return SeverityDegraded
 		}
 	case PanelQueries:
 		if d.QueryExtWarn != "" {
@@ -166,7 +187,11 @@ func (d *DBState) PanelSeverity(k PanelKind) Severity {
 			return SeverityInfo
 		}
 		if len(d.LockStats) > 0 {
-			return SeverityCritical
+			// Blocking is worth flagging, not alarming over -- red is
+			// reserved for the database actually being in trouble
+			// (unreachable, near connection exhaustion), not for one
+			// query waiting on another.
+			return SeverityWarning
 		}
 		return SeverityOK
 	case PanelTransactions:
@@ -182,62 +207,6 @@ func (d *DBState) PanelSeverity(k PanelKind) Severity {
 		return SeverityOK
 	}
 	return SeverityInfo
-}
-
-// PanelSummary is the one-line status shown on the panel's sidebar card.
-func (d *DBState) PanelSummary(k PanelKind) string {
-	switch k {
-	case PanelConnections:
-		if d.ConnErr != nil {
-			return "collection error"
-		}
-		if !d.ConnLoaded {
-			return "loading…"
-		}
-		return fmt.Sprintf("%d / %d (%.0f%%)", d.ConnStats.Total, d.ConnStats.MaxConnections, d.ConnStats.UtilizationPercent())
-	case PanelCache:
-		if d.CacheErr != nil {
-			return "collection error"
-		}
-		if !d.CacheLoaded {
-			return "loading…"
-		}
-		return fmt.Sprintf("%.1f%% hit", d.CacheStats.HitRatio())
-	case PanelQueries:
-		if d.QueryExtWarn != "" {
-			return "disabled — see warning"
-		}
-		if d.QueryErr != nil {
-			return "collection error"
-		}
-		if !d.QueryLoaded {
-			return "loading…"
-		}
-		return fmt.Sprintf("%d tracked", len(d.QueryStats))
-	case PanelLocks:
-		if d.LockErr != nil {
-			return "collection error"
-		}
-		if !d.LockLoaded {
-			return "loading…"
-		}
-		if len(d.LockStats) == 0 {
-			return "no lock contention detected"
-		}
-		return fmt.Sprintf("%d blocked", len(d.LockStats))
-	case PanelTransactions:
-		if d.TxErr != nil {
-			return "collection error"
-		}
-		if !d.TxLoaded {
-			return "loading…"
-		}
-		if len(d.TxStats) == 0 {
-			return "none"
-		}
-		return fmt.Sprintf("%d long-running", len(d.TxStats))
-	}
-	return ""
 }
 
 const versionQuery = `SELECT current_setting('server_version'), pg_postmaster_start_time()`
