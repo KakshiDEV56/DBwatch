@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"dbwatch/internal/collector"
+	"github.com/KakshiDEV56/DBwatch/internal/collector"
 )
 
 // sparklineHistoryLimit bounds every rolling history slice -- sparklines

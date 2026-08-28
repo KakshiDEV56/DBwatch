@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"dbwatch/internal/config"
+	"github.com/KakshiDEV56/DBwatch/internal/config"
 )
 
 // Dir resolves the OS-appropriate per-user config directory for dbwatch

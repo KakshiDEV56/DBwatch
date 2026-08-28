@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"dbwatch/internal/config"
-	"dbwatch/internal/store"
-	"dbwatch/internal/tui"
+	"github.com/KakshiDEV56/DBwatch/internal/config"
+	"github.com/KakshiDEV56/DBwatch/internal/store"
+	"github.com/KakshiDEV56/DBwatch/internal/tui"
 )
 
 func main() {

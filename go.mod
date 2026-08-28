@@ -1,4 +1,4 @@
-module dbwatch
+module github.com/KakshiDEV56/DBwatch
 
 go 1.25.9
 

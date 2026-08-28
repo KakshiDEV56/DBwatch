@@ -8,9 +8,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"dbwatch/internal/collector"
-	"dbwatch/internal/config"
-	"dbwatch/internal/store"
+	"github.com/KakshiDEV56/DBwatch/internal/collector"
+	"github.com/KakshiDEV56/DBwatch/internal/config"
+	"github.com/KakshiDEV56/DBwatch/internal/store"
 )
 
 type focusArea int

@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"dbwatch/internal/testkit"
+	"github.com/KakshiDEV56/DBwatch/internal/testkit"
 )
 
 func main() {

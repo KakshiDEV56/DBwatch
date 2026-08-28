@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"dbwatch/internal/collector"
-	"dbwatch/internal/config"
+	"github.com/KakshiDEV56/DBwatch/internal/collector"
+	"github.com/KakshiDEV56/DBwatch/internal/config"
 )
 
 // DBState is the live, per-database runtime state the dashboard renders:
