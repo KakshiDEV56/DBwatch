@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
   <img alt="Go version" src="https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.0.1-blue">
+  <a href="CHANGELOG.md"><img alt="Version" src="https://img.shields.io/badge/version-0.0.2-blue"></a>
   <img alt="PostgreSQL" src="https://img.shields.io/badge/postgresql-13%2B-336791?logo=postgresql&logoColor=white">
 </p>
 
@@ -76,50 +76,75 @@ queries, durations, blocking relationships) to act on immediately.
 
 ## Installation
 
-```bash
-git clone <this-repository>
-cd dbwatch
-go build -o dbwatch ./cmd/dbwatch
-```
-
-### Cross-platform
-
 dbwatch runs natively on Linux, macOS, and Windows -- there's no
 platform-specific code to maintain: the PostgreSQL driver (`pgx`) speaks
 the wire protocol directly rather than wrapping `libpq`, so there's no
 cgo anywhere in the dependency tree, and the TUI framework (Bubble Tea /
 Lip Gloss) handles per-OS terminal capability detection (colors, mouse,
-Windows' virtual terminal sequences) internally. Clipboard copy uses
-OSC52 (a terminal escape sequence), so it works wherever the *terminal
-emulator* supports it, not conditional on the OS.
+Windows' virtual terminal sequences) internally.
 
-Build a release binary for every platform from any single machine:
+Pick whichever of these three needs the least installed on your machine:
 
-```bash
-make dist
-```
+### 1. Download a prebuilt binary (nothing else required)
 
-produces `dist/dbwatch-{linux,darwin}-{amd64,arm64}` and
-`dist/dbwatch-windows-amd64.exe`. Each is a static binary -- no runtime
+Grab the file for your platform from the
+[Releases page](https://github.com/KakshiDEV56/DBwatch/releases/latest):
+`dbwatch-linux-amd64`, `dbwatch-linux-arm64`, `dbwatch-darwin-amd64`
+(Intel Mac), `dbwatch-darwin-arm64` (Apple Silicon), or
+`dbwatch-windows-amd64.exe`. Each is a static binary -- no runtime
 dependencies to install alongside it.
 
-The `Makefile` and `scripts/*.sh` (demo/test tooling, not the dbwatch
-binary itself) are bash and need `make`; on Windows, run them under
-WSL2 or Git Bash.
+```bash
+# macOS / Linux
+chmod +x dbwatch-<platform>
+sudo mv dbwatch-<platform> /usr/local/bin/dbwatch
+dbwatch start
+```
+
+On macOS, the first launch may need an extra step past Gatekeeper since
+the binary isn't notarized: **System Settings → Privacy & Security →
+"Open Anyway"** (or `xattr -d com.apple.quarantine dbwatch` before
+running it). On Windows, run the `.exe` directly, or move it onto your
+`PATH`.
+
+### 2. `go install` (if you already have Go)
+
+```bash
+go install github.com/KakshiDEV56/DBwatch/cmd/dbwatch@latest
+dbwatch start
+```
+
+Installs into `$(go env GOPATH)/bin` -- make sure that's on your `PATH`.
+Works identically on Linux, macOS, and Windows.
+
+### 3. Build from source
+
+```bash
+git clone https://github.com/KakshiDEV56/DBwatch.git
+cd DBwatch
+go build -o dbwatch ./cmd/dbwatch
+```
+
+This is also how to cross-compile for a platform other than the one
+you're on -- `make dist` builds all five release targets
+(`dist/dbwatch-{linux,darwin}-{amd64,arm64}` and
+`dist/dbwatch-windows-amd64.exe`) from any single machine, since none of
+it needs cgo or a platform-specific toolchain. The `Makefile` and
+`scripts/*.sh` (this demo/dev tooling, not the dbwatch binary itself)
+are bash and need `make`; on Windows, run them under WSL2 or Git Bash.
 
 ## Quick start
 
-No config file to write by hand. Build it, run it, paste a connection
-string into the welcome screen:
+No config file to write by hand. However you installed it, just run:
 
 ```bash
-go build -o dbwatch ./cmd/dbwatch
-./dbwatch start
+dbwatch start
 ```
 
-dbwatch keeps its own list of databases in your per-user config
-directory (`~/.config/dbwatch/databases.yaml` on Linux, the platform
-equivalent elsewhere -- see [Cross-platform](#cross-platform)) and loads
+and paste a connection string into the welcome screen. dbwatch keeps its
+own list of databases in your per-user config directory
+(`~/.config/dbwatch/databases.yaml` on Linux, the platform equivalent
+elsewhere -- see [Installation](#installation)) and loads
 it automatically every time you start it. Add more later with `a` from
 inside the app; remove one by selecting it in the Databases table and
 pressing `d`, which asks for a yes/no confirmation first -- nothing is
@@ -133,9 +158,11 @@ something with real traffic to look at before pointing dbwatch at your
 own database:
 
 ```bash
+# from a clone of this repo (see "Build from source" above)
 docker compose up -d
 docker compose ps                 # wait for "healthy"
 ./scripts/simulate-load.sh        # optional: active/idle/idle-in-tx traffic
+go build -o dbwatch ./cmd/dbwatch
 ./dbwatch start                   # then add postgres://postgres:dbwatch@localhost:5432/dbwatch_demo
                                    # from the welcome screen (or 'a' if you already have one)
 ```
