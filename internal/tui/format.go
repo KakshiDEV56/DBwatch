@@ -24,6 +24,21 @@ func humanRate(bytesPerSec float64) string {
 	return fmt.Sprintf("%.1f %ciB/s", bytesPerSec/div, "KMGTPE"[exp])
 }
 
+// humanBytes formats an absolute byte count compactly, e.g. "12.3 MiB".
+func humanBytes(n int64) string {
+	const unit = 1024.0
+	f := float64(n)
+	if f < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := unit, 0
+	for x := f / unit; x >= unit; x /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", f/div, "KMGTPE"[exp])
+}
+
 // truncate collapses embedded whitespace/newlines (multi-line SQL becomes
 // one line) and clips to n runes with an ellipsis.
 func truncate(s string, n int) string {

@@ -27,6 +27,8 @@ type DBState struct {
 	Locks        *collector.LocksCollector
 	Transactions *collector.TransactionsCollector
 	Activity     *collector.ActivityCollector
+	Size         *collector.SizeCollector
+	Capabilities *collector.CapabilityCollector
 
 	ConnectErr    error
 	Bootstrapped  bool
@@ -61,6 +63,26 @@ type DBState struct {
 	TxErr    error
 	TxLoaded bool
 
+	SizeStats  collector.SizeStats
+	SizeErr    error
+	SizeLoaded bool
+
+	SizeHistory []float64 // recent DatabaseBytes readings, oldest first
+
+	// SizeGrowthPerSec is a signed bytes/second rate derived from
+	// consecutive Size snapshots -- unlike the monotonic counters Activity
+	// diffs, database size can legitimately shrink (VACUUM FULL, TRUNCATE,
+	// DROP), so a negative rate is a real reading, not a reset to clamp
+	// away.
+	SizeGrowthPerSec float64
+	SizeGrowthLoaded bool
+	prevSize         collector.SizeStats
+	prevSizeAt       time.Time
+
+	CapStats  collector.CapabilityStats
+	CapErr    error
+	CapLoaded bool
+
 	// Load: derived rates from consecutive ActivityStats snapshots. Not
 	// meaningful until two snapshots exist (LoadLoaded).
 	ActivityErr    error
@@ -88,6 +110,15 @@ type DBState struct {
 	locksLastState string
 	txLogged       bool
 	txLastState    string
+
+	sizeErrLogged       bool
+	sizeBaselineLogged  bool
+	sizeLastLoggedBytes int64
+
+	capErrLogged  bool
+	capLastLogged string // comparable snapshot of the last logged capability state, for change detection
+
+	activityErrLogged bool
 }
 
 // NewDBState creates the runtime state for one configured database. The
@@ -134,6 +165,8 @@ func ConnectDatabase(ctx context.Context, target config.Database) *DBState {
 	db.Transactions = collector.NewTransactionsCollector(pool)
 	db.Queries = collector.NewQueriesCollector(pool, 5)
 	db.Activity = collector.NewActivityCollector(pool)
+	db.Size = collector.NewSizeCollector(pool)
+	db.Capabilities = collector.NewCapabilityCollector(pool)
 	return db
 }
 
@@ -235,6 +268,44 @@ func (d *DBState) PanelSeverity(k PanelKind) Severity {
 			return SeverityWarning
 		}
 		return SeverityOK
+	case PanelSize:
+		if d.SizeErr != nil {
+			return SeverityError
+		}
+		if !d.SizeLoaded {
+			return SeverityInfo
+		}
+		// No warning/critical thresholds here -- dbwatch has no way to know
+		// this server's actual disk capacity via SQL, so inventing a
+		// growth-rate threshold would be a fabricated metric. This panel is
+		// informational; a real capacity warning needs disk-level
+		// monitoring outside what pg_database_size can tell you.
+		return SeverityOK
+	case PanelCapabilities:
+		if d.CapErr != nil {
+			return SeverityError
+		}
+		if !d.CapLoaded {
+			return SeverityInfo
+		}
+		if !d.CapStats.IsSuperuser && !d.CapStats.HasReadAllStats {
+			// A real consequence, not a fabricated one: without
+			// pg_read_all_stats (or superuser), pg_stat_activity only shows
+			// this role's own backends, so Connections/Locks/Transactions
+			// above are working from a partial view.
+			return SeverityWarning
+		}
+		return SeverityOK
+	case PanelErrors:
+		entries := d.Logs[PanelErrors].Entries()
+		if len(entries) == 0 {
+			return SeverityOK
+		}
+		// Reflects the most recent cross-posted event, not a running worst
+		// -- there's no clean way to say a past error has "resolved" from a
+		// discrete event log, so this panel tracks "what just happened"
+		// rather than accumulating alarm forever.
+		return entries[len(entries)-1].Severity
 	}
 	return SeverityInfo
 }

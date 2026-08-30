@@ -55,6 +55,16 @@ type activityResult struct {
 	stats collector.ActivityStats
 	err   error
 }
+type sizeResult struct {
+	db    int
+	stats collector.SizeStats
+	err   error
+}
+type capResult struct {
+	db    int
+	stats collector.CapabilityStats
+	err   error
+}
 
 type bootstrapResult struct {
 	db  int
@@ -201,6 +211,14 @@ func (m Model) fetchAll() []tea.Cmd {
 				stats, err := db.Activity.Collect(m.ctx)
 				return activityResult{i, stats, err}
 			},
+			func() tea.Msg {
+				stats, err := db.Size.Collect(m.ctx)
+				return sizeResult{i, stats, err}
+			},
+			func() tea.Msg {
+				stats, err := db.Capabilities.Collect(m.ctx)
+				return capResult{i, stats, err}
+			},
 		)
 		// Gated on Bootstrapped, not just QueryExtWarn=="" -- both start
 		// empty/false together, so without this the very first tick fires
@@ -274,6 +292,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case activityResult:
 		m.dbs[msg.db].RecordActivity(msg.stats, msg.err)
+		m.syncLogCursor()
+		return m, nil
+	case sizeResult:
+		m.dbs[msg.db].RecordSize(msg.stats, msg.err)
+		m.syncLogCursor()
+		return m, nil
+	case capResult:
+		m.dbs[msg.db].RecordCapabilities(msg.stats, msg.err)
+		m.syncLogCursor()
 		return m, nil
 	case bootstrapResult:
 		if msg.err == nil {

@@ -44,14 +44,16 @@ func dbTableHeightFor(dbCount int) int {
 }
 
 // sidebarCardTotalHeights returns the total rendered height (title line +
-// content + bottom border) of the Health card and of each of the five
-// panel cards below it, sized so the whole stack fills bodyHeight rather
-// than leaving dead space under a handful of small boxes. The Health card
-// gets twice the weight of a panel card -- it has more to say.
+// content + bottom border) of the Health card and of each panel card below
+// it, sized so the whole stack fills bodyHeight rather than leaving dead
+// space under a handful of small boxes. The Health card gets twice the
+// weight of a panel card -- it has more to say. The unit divides bodyHeight
+// by 2 (Health's weight) plus one per panel, so adding a panel to allPanels
+// never needs this math touched again.
 func sidebarCardTotalHeights(bodyHeight int) (healthTotal, panelTotal int) {
-	unit := bodyHeight / 7
-	if unit < 4 {
-		unit = 4
+	unit := bodyHeight / (2 + len(allPanels))
+	if unit < 3 {
+		unit = 3
 	}
 	return unit * 2, unit
 }
@@ -93,11 +95,20 @@ func (m Model) hitTest(x, y int) (region, int) {
 	}
 
 	rightY := y - bodyTop
-	dbBoxHeight := dbTableHeightFor(len(m.dbs)) + 2 // +2 border
+	dbTableHeight := dbTableHeightFor(len(m.dbs))
+	dbBoxHeight := dbTableHeight + 2 // +2 border
 	if rightY < dbBoxHeight {
 		contentY := rightY - 1 // top border
-		// dbTableView renders: column header, then one row per database.
-		dbIdx := contentY - 1
+		// dbTableView renders: column header, then a scrolled window of
+		// rows -- rowInView must go through the same offset the renderer
+		// used, or a click while scrolled would select the wrong database.
+		rowInView := contentY - 1
+		if rowInView < 0 {
+			return regionDBTable, -1
+		}
+		visibleRows := max(1, dbTableHeight-2-1)
+		offset := logsWindowOffset(m.selectedDB, visibleRows)
+		dbIdx := offset + rowInView
 		if dbIdx < 0 || dbIdx >= len(m.dbs) {
 			return regionDBTable, -1
 		}

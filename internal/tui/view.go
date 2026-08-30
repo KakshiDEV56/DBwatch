@@ -204,6 +204,12 @@ func (m Model) panelCardBody(p PanelKind, width, maxLines int) string {
 		return locksCardBody(db, width, maxLines)
 	case PanelTransactions:
 		return transactionsCardBody(db, width, maxLines)
+	case PanelSize:
+		return sizeCardBody(db, width, maxLines)
+	case PanelCapabilities:
+		return capabilitiesCardBody(db, width, maxLines)
+	case PanelErrors:
+		return errorsCardBody(db, width, maxLines)
 	}
 	return ""
 }
@@ -344,6 +350,122 @@ func transactionsCardBody(db *DBState, width, maxLines int) string {
 	return strings.Join(lines, "\n")
 }
 
+func sizeCardBody(db *DBState, width, maxLines int) string {
+	if db.SizeErr != nil {
+		return critStyle.Render(truncate(db.SizeErr.Error(), width))
+	}
+	if !db.SizeLoaded {
+		return dimStyle.Render("loading…")
+	}
+	s := db.SizeStats
+
+	var lines []string
+	lines = append(lines, labelStyle.Render(truncate(humanBytes(s.DatabaseBytes), width)))
+	if maxLines >= 2 {
+		lines = append(lines, dimStyle.Render(truncate(fmt.Sprintf("tables %s · indexes %s", humanBytes(s.TablesBytes), humanBytes(s.IndexesBytes)), width)))
+	}
+	if maxLines >= 3 {
+		switch {
+		case !db.SizeGrowthLoaded:
+			lines = append(lines, dimStyle.Render("growth: measuring…"))
+		case db.SizeGrowthPerSec > 0.5:
+			lines = append(lines, infoStyle.Render("↑")+dimStyle.Render(" "+truncate(humanRate(db.SizeGrowthPerSec)+" growing", width-2)))
+		case db.SizeGrowthPerSec < -0.5:
+			lines = append(lines, infoStyle.Render("↓")+dimStyle.Render(" "+truncate(humanRate(-db.SizeGrowthPerSec)+" shrinking", width-2)))
+		default:
+			lines = append(lines, dimStyle.Render("steady"))
+		}
+	}
+	if maxLines >= 4 && len(db.SizeHistory) >= 2 {
+		lines = append(lines, dimStyle.Render(sparkline(db.SizeHistory, width)))
+	}
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func boolMark(b bool) string {
+	if b {
+		return "✓"
+	}
+	return "✗"
+}
+
+func capabilitiesCardBody(db *DBState, width, maxLines int) string {
+	if db.CapErr != nil {
+		return critStyle.Render(truncate(db.CapErr.Error(), width))
+	}
+	if !db.CapLoaded {
+		return dimStyle.Render("loading…")
+	}
+	c := db.CapStats
+
+	var lines []string
+	lines = append(lines, labelStyle.Render(truncate("PostgreSQL "+db.Version, width)))
+	if maxLines >= 2 {
+		visibility := "limited — own queries only"
+		style := warnStyle
+		if c.IsSuperuser {
+			visibility, style = "full visibility (superuser)", dimStyle
+		} else if c.HasReadAllStats {
+			visibility, style = "full visibility (pg_read_all_stats)", dimStyle
+		}
+		lines = append(lines, style.Render(truncate(visibility, width)))
+	}
+	if maxLines >= 3 {
+		lines = append(lines, dimStyle.Render(truncate(fmt.Sprintf("track: activities%s counts%s io%s",
+			boolMark(c.TrackActivities), boolMark(c.TrackCounts), boolMark(c.TrackIOTiming)), width)))
+	}
+	if maxLines >= 4 {
+		pss := "pg_stat_statements: not available"
+		switch {
+		case c.HasExtension("pg_stat_statements"):
+			pss = "pg_stat_statements: enabled"
+		case c.PgStatStatementsAvailable:
+			pss = "pg_stat_statements: available, not enabled"
+		}
+		lines = append(lines, dimStyle.Render(truncate(pss, width)))
+	}
+	if maxLines >= 5 {
+		lines = append(lines, dimStyle.Render(fmt.Sprintf("%d extension(s) installed", len(c.Extensions))))
+	}
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func errorsCardBody(db *DBState, width, maxLines int) string {
+	entries := db.Logs[PanelErrors].Entries()
+	if len(entries) == 0 {
+		return okStyle.Render(truncate("no errors or events", width))
+	}
+	last := entries[len(entries)-1]
+
+	var lines []string
+	lines = append(lines, dimStyle.Render(fmt.Sprintf("%d event(s) logged", len(entries))))
+	if maxLines >= 2 {
+		lines = append(lines, last.Severity.Style().Render(truncate(last.Summary, width)))
+	}
+	if maxLines >= 3 {
+		crit, warn := 0, 0
+		for _, e := range entries {
+			switch {
+			case e.Severity >= SeverityCritical:
+				crit++
+			case e.Severity == SeverityWarning || e.Severity == SeverityDegraded:
+				warn++
+			}
+		}
+		lines = append(lines, dimStyle.Render(fmt.Sprintf("critical %d · warning %d", crit, warn)))
+	}
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m Model) rightView(width, height int) string {
 	dbTableHeight := dbTableHeightFor(len(m.dbs))
 	logsHeight := height - dbTableHeight - 1
@@ -351,19 +473,29 @@ func (m Model) rightView(width, height int) string {
 		logsHeight = 5
 	}
 
-	top := renderTitledBox("Databases", m.dbTableView(width-4), width, m.focus == focusDBs, dbTableHeight-2)
+	top := renderTitledBox("Databases", m.dbTableView(width-4, dbTableHeight-2), width, m.focus == focusDBs, dbTableHeight-2)
 	bottom := renderTitledBox("Logs / Events", m.logsView(width-4, logsHeight), width, m.focus == focusLogs, logsHeight-2)
 
 	return lipgloss.JoinVertical(lipgloss.Left, top, bottom)
 }
 
-func (m Model) dbTableView(width int) string {
+// dbTableView renders a scrolling window of at most `rows`-1 database rows
+// (one row reserved for the column header), keeping the selected row
+// in view with the same minimal-scroll logic the logs panel uses --
+// otherwise a saved list longer than the box's fixed height would silently
+// render past its border instead of scrolling, breaking the box below it.
+func (m Model) dbTableView(width, rows int) string {
 	var b strings.Builder
 	header := fmt.Sprintf("%-3s %-20s %-12s %s", "", "NAME", "REGION", "STATUS")
 	b.WriteString(dimStyle.Render(header) + "\n")
 
+	visibleRows := max(1, rows-1)
+	offset := logsWindowOffset(m.selectedDB, visibleRows)
+	end := min(offset+visibleRows, len(m.dbs))
+
 	q := strings.ToLower(m.searchQuery)
-	for i, db := range m.dbs {
+	for i := offset; i < end; i++ {
+		db := m.dbs[i]
 		cursor := "  "
 		if m.focus == focusDBs && i == m.selectedDB {
 			cursor = "> "
@@ -664,6 +796,52 @@ func guideContent() []string {
 		"application bug (a transaction opened and never committed or rolled\n" +
 		"back), and it blocks vacuum from cleaning up dead rows for as long\n" +
 		"as it stays open.\n\n" +
+
+		labelStyle.Render("DATABASE SIZE") + "\n" +
+		"Real, queryable disk usage for this database -- nothing sampled or\n" +
+		"estimated:\n" +
+		bullet("current size", "pg_database_size() -- every relation plus catalogs, excludes WAL") +
+		bullet("tables", "sum of pg_table_size() over user tables (heap + toast), no indexes") +
+		bullet("indexes", "sum of pg_indexes_size() over user tables") +
+		bullet("growth", "a signed rate from consecutive readings this session -- size\n"+
+			"      can shrink (VACUUM FULL, TRUNCATE, DROP), so a negative rate is\n"+
+			"      a real reading, not clamped away like a reset counter would be") +
+		"There's no warning/critical threshold on size itself -- dbwatch has no\n" +
+		"way to know this server's actual disk capacity via SQL, so it won't\n" +
+		"invent a capacity alarm it can't back up. The log records a baseline\n" +
+		"reading, then any later change of at least 10 MiB or 5% (whichever\n" +
+		"comes first), so the event stream stays a record of real change\n" +
+		"instead of autovacuum-scale noise.\n\n" +
+
+		labelStyle.Render("CAPABILITIES") + "\n" +
+		"What this server actually exposes, and permits for the connected\n" +
+		"role -- every other panel is only as complete as these allow:\n" +
+		bullet("visibility", "superuser or pg_read_all_stats sees every backend in\n"+
+			"      pg_stat_activity; without either, a role only sees its own,\n"+
+			"      so Connections/Locks/Transactions above may be under-reporting.\n"+
+			"      This is the one case this panel raises a real warning -- it's a\n"+
+			"      real, verifiable consequence for the rest of the dashboard") +
+		bullet("track_activities / track_counts / track_io_timing", "server-side\n"+
+			"      settings controlling whether pg_stat_activity and pg_stat_*\n"+
+			"      collect anything at all -- off means empty data, not zero activity") +
+		bullet("pg_stat_statements", "whether it's merely available (would need\n"+
+			"      shared_preload_libraries in postgresql.conf, then a restart), or\n"+
+			"      already enabled and backing the Top Queries panel") +
+		"A baseline reading is logged once, then again only when something\n" +
+		"actually changes (an extension installed at runtime, a role grant, a\n" +
+		"config reload flipping a track_* setting) -- not every tick.\n\n" +
+
+		labelStyle.Render("ERRORS / EVENTS") + "\n" +
+		"This panel has no collector of its own -- it's every other panel's\n" +
+		"Warning-severity-or-worse log entry, cross-posted here the moment it\n" +
+		"happens, plus deadlock events (an exact pg_stat_database counter, so\n" +
+		"an increase is logged directly) that don't otherwise have a home.\n" +
+		"One merged timeline of query failures, connection failures, lock\n" +
+		"contention, long transactions, and deadlocks, instead of checking\n" +
+		"six panels to find out what actually went wrong. Its status dot\n" +
+		"reflects the most recent event, not a running worst -- there's no\n" +
+		"clean way to say a past discrete event has \"resolved\", so it shows\n" +
+		"what just happened rather than accumulating alarm forever.\n\n" +
 
 		labelStyle.Render("HEALTH CARD & DATABASE LOAD") + "\n" +
 		"The top box in the sidebar: status, version, database name, uptime,\n" +
