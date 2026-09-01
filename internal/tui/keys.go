@@ -237,7 +237,10 @@ func (m Model) handleAddDBKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		if len(m.dbs) == 0 {
-			return m, nil // nothing to cancel back to yet
+			// Nothing to cancel back to on the welcome screen -- esc quits
+			// instead, so a user with no databases yet isn't forced to
+			// kill the terminal to exit.
+			return m, tea.Quit
 		}
 		m.focus = m.addDBWasIn
 		m.addDBInput = ""

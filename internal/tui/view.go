@@ -627,7 +627,8 @@ func (m Model) welcomeView() string {
 	boxWidth := min(m.width-10, 60)
 	box := renderTitledBox("Connect", m.addDBInputBody(boxWidth-4), boxWidth, true, 0)
 
-	hint := keyStyle.Render("enter") + " " + dimStyle.Render("connect and start monitoring")
+	hint := keyStyle.Render("enter") + " " + dimStyle.Render("connect and start monitoring") + "   " +
+		keyStyle.Render("esc") + " " + dimStyle.Render("quit")
 
 	content := strings.Join([]string{
 		"",
