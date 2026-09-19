@@ -1,4 +1,5 @@
-.PHONY: build test-build dist test-up test-down seed workload watch \
+.PHONY: build test-build dist unit-test vet fmt-check lint ci \
+	test-up test-down seed workload watch \
 	test-locks test-deadlock test-long-tx test-idle-tx test-errors \
 	test-connections test-growth test-failure test-all clean-test
 
@@ -7,6 +8,22 @@ build:
 
 test-build:
 	go build -o dbwatch-test ./test/cmd/dbwatch-test
+
+fmt-check:
+	@files="$$(gofmt -l .)"; \
+	if [ -n "$$files" ]; then echo "gofmt needed:"; echo "$$files"; exit 1; fi
+
+vet:
+	go vet ./...
+
+unit-test:
+	go test ./... -count=1
+
+lint: fmt-check vet
+
+# Local stand-in for the GitHub Actions CI gate (minus golangci-lint and
+# the native Windows/macOS runners — those run on the hosted agents).
+ci: lint unit-test build dist
 
 # Cross-compiled release binaries for every supported platform. dbwatch
 # has no cgo dependencies (pgx speaks the Postgres wire protocol directly,

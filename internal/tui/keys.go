@@ -201,9 +201,10 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	default:
-		if msg.Type == tea.KeyRunes {
+		switch msg.Type {
+		case tea.KeyRunes:
 			m.searchInput += string(msg.Runes)
-		} else if msg.Type == tea.KeySpace {
+		case tea.KeySpace:
 			m.searchInput += " "
 		}
 		return m, nil
@@ -255,9 +256,10 @@ func (m Model) handleAddDBKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	default:
-		if msg.Type == tea.KeyRunes {
+		switch msg.Type {
+		case tea.KeyRunes:
 			m.addDBInput += string(msg.Runes)
-		} else if msg.Type == tea.KeySpace {
+		case tea.KeySpace:
 			m.addDBInput += " "
 		}
 		return m, nil

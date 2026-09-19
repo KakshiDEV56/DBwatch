@@ -11,16 +11,14 @@ import (
 // bright box outlines. That single change is what separates a "web
 // dashboard with rounded cards" look from a native terminal console.
 var (
-	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(theme.Foreground)
-	headingStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Foreground)
-	labelStyle   = lipgloss.NewStyle().Bold(true).Foreground(theme.Secondary)
-	dimStyle     = lipgloss.NewStyle().Foreground(theme.Muted)
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Foreground)
+	labelStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Secondary)
+	dimStyle   = lipgloss.NewStyle().Foreground(theme.Muted)
 
 	okStyle   = lipgloss.NewStyle().Bold(true).Foreground(theme.Healthy)
 	infoStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Info)
 	warnStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Warning)
 	critStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Critical)
-	errStyle  = lipgloss.NewStyle().Bold(true).Foreground(theme.Critical)
 
 	liveStyle     = lipgloss.NewStyle().Bold(true).Foreground(theme.Healthy)
 	readModeStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Warning)

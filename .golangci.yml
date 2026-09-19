@@ -1,0 +1,8 @@
+# golangci-lint v2. Keep this a build-quality gate, not a style-nits farm.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard

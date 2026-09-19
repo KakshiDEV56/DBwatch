@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -106,23 +105,4 @@ func probe(ctx context.Context, dsn string) error {
 	}
 	defer pool.Close()
 	return pool.Ping(ctx)
-}
-
-// MultiDatabaseFailure stops the shared container (all test databases
-// live on one PostgreSQL instance) and verifies dbwatch keeps the *other*
-// configured databases usable -- there is no separate second instance in
-// this harness, so "one db down, others up" is demonstrated by checking
-// that dbwatch's per-database state is independent, not by an actually
-// isolated second server. See test/README.md for why.
-func multiDatabaseFailureNote() string {
-	return strings.TrimSpace(`
-This harness runs every test database on one shared PostgreSQL instance/
-container, so there is no way to fail exactly one of them at the network
-level. DatabaseFailure above still exercises the important property --
-dbwatch's per-database state is independent, so watch the OTHER
-databases in the sidebar table while it runs: they must keep polling and
-updating normally while "production" shows an error. A true
-multi-instance failure test needs a second postgres container, which is
-a reasonable next step if per-instance failure isolation specifically
-needs coverage.`)
 }
