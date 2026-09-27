@@ -1,0 +1,20 @@
+.git
+.github
+.claude
+
+# Local build outputs
+dbwatch
+dbwatch-test
+dist
+
+# Demo Postgres and the chaos harness are not part of the runtime image
+docker-compose.yml
+test
+scripts
+
+# Docs, screenshots, and editor files
+*.md
+*.png
+LICENSE
+.DS_Store
+*.swp
