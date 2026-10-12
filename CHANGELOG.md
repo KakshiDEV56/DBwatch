@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Bound each background PostgreSQL collector and bootstrap attempt with an independent five-second context deadline, so stalled queries return through the normal per-panel error path instead of waiting indefinitely.
+- Added unit coverage for collector deadline expiry and parent-context cancellation.
+
+
 All notable changes to dbwatch are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project uses [semantic versioning](https://semver.org/) once it reaches
