@@ -25,6 +25,23 @@ const (
 
 const minWidth, minHeight = 50, 16
 
+// collectorTimeout bounds each background database query independently. A
+// slow or wedged PostgreSQL server must not leave collector goroutines waiting
+// forever or keep stale results looking current.
+const collectorTimeout = 5 * time.Second
+
+func collectWithTimeout[T any](parent context.Context, collect func(context.Context) (T, error)) (T, error) {
+	ctx, cancel := context.WithTimeout(parent, collectorTimeout)
+	defer cancel()
+	return collect(ctx)
+}
+
+func bootstrapWithTimeout(parent context.Context, bootstrap func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(parent, collectorTimeout)
+	defer cancel()
+	return bootstrap(ctx)
+}
+
 type connResult struct {
 	db    int
 	stats collector.ConnectionStats
@@ -192,31 +209,31 @@ func (m Model) fetchAll() []tea.Cmd {
 		}
 		cmds = append(cmds,
 			func() tea.Msg {
-				stats, err := db.Connections.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Connections.Collect)
 				return connResult{i, stats, err}
 			},
 			func() tea.Msg {
-				stats, err := db.Cache.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Cache.Collect)
 				return cacheResult{i, stats, err}
 			},
 			func() tea.Msg {
-				stats, err := db.Locks.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Locks.Collect)
 				return lockResult{i, stats, err}
 			},
 			func() tea.Msg {
-				stats, err := db.Transactions.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Transactions.Collect)
 				return txResult{i, stats, err}
 			},
 			func() tea.Msg {
-				stats, err := db.Activity.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Activity.Collect)
 				return activityResult{i, stats, err}
 			},
 			func() tea.Msg {
-				stats, err := db.Size.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Size.Collect)
 				return sizeResult{i, stats, err}
 			},
 			func() tea.Msg {
-				stats, err := db.Capabilities.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Capabilities.Collect)
 				return capResult{i, stats, err}
 			},
 		)
@@ -226,13 +243,13 @@ func (m Model) fetchAll() []tea.Cmd {
 		// extension, racing a spurious "relation does not exist" error.
 		if db.Bootstrapped && db.QueryExtWarn == "" {
 			cmds = append(cmds, func() tea.Msg {
-				stats, err := db.Queries.Collect(m.ctx)
+				stats, err := collectWithTimeout(m.ctx, db.Queries.Collect)
 				return queryResult{i, stats, err}
 			})
 		}
 		if !db.Bootstrapped {
 			cmds = append(cmds, func() tea.Msg {
-				return bootstrapResult{i, db.Bootstrap(m.ctx)}
+				return bootstrapResult{i, bootstrapWithTimeout(m.ctx, db.Bootstrap)}
 			})
 		}
 	}
