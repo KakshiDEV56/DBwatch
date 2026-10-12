@@ -58,6 +58,9 @@ queries, durations, blocking relationships) to act on immediately.
 - **Automatic recovery** -- a database that's unreachable at startup, or
   goes down mid-session, is retried every poll and picked up the moment
   it's back, with no restart required.
+- **Bounded collectors** -- every background statistics query has an independent
+  five-second deadline, so a stalled query cannot wait forever; deadline and
+  cancellation errors flow through the existing panel error reporting.
 - **A dedicated chaos-testing harness** (`test/`) that generates real
   PostgreSQL failure conditions -- lock contention, deadlocks, long
   transactions, connection pressure, database outages -- to verify
