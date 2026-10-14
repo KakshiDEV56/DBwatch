@@ -1,0 +1,80 @@
+---
+title: Installation
+description: Run dbwatch from a static binary, go install, a container image, or a local build. All four produce the same terminal UI.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+dbwatch is a single static binary. The PostgreSQL driver speaks the wire protocol itself, so there is no `libpq` and no cgo. Linux, macOS, and Windows are the same program.
+
+Pick the path that needs the least installed on the machine.
+
+<Tabs syncKey="install">
+  <TabItem label="Binary">
+    Download the file for your platform from the [latest release](https://github.com/KakshiDEV56/DBwatch/releases/latest):
+
+    | File | Machine |
+    | --- | --- |
+    | `dbwatch-linux-amd64` | Linux, Intel or AMD |
+    | `dbwatch-linux-arm64` | Linux, ARM (including most cloud ARM instances) |
+    | `dbwatch-darwin-amd64` | macOS, Intel |
+    | `dbwatch-darwin-arm64` | macOS, Apple silicon |
+    | `dbwatch-windows-amd64.exe` | Windows, 64-bit |
+
+    ```bash
+    chmod +x dbwatch-linux-amd64
+    sudo mv dbwatch-linux-amd64 /usr/local/bin/dbwatch
+    dbwatch start
+    ```
+
+    On macOS, Gatekeeper may block the first launch because the binary is not notarized. Use **System Settings → Privacy & Security → Open Anyway**, or run `xattr -d com.apple.quarantine dbwatch` before moving it onto your `PATH`. On Windows, run the `.exe` directly or put it on `PATH`.
+
+  </TabItem>
+  <TabItem label="Go">
+    Requires Go 1.25 or later.
+
+    ```bash
+    go install github.com/KakshiDEV56/DBwatch/cmd/dbwatch@latest
+    dbwatch start
+    ```
+
+    The binary lands in `$(go env GOPATH)/bin`. That directory has to be on your `PATH`.
+
+  </TabItem>
+  <TabItem label="Docker">
+    The image is published to GitHub Container Registry for `linux/amd64` and `linux/arm64`.
+
+    ```bash
+    docker pull ghcr.io/kakshidev56/dbwatch:latest
+    docker run --rm -it ghcr.io/kakshidev56/dbwatch
+    ```
+
+    `-it` is required. dbwatch is a terminal UI and will not render without a TTY. Saved databases, networking, and a full example are on the [Docker](/docker/) page.
+
+  </TabItem>
+  <TabItem label="Source">
+    Requires Go 1.25 or later.
+
+    ```bash
+    git clone https://github.com/KakshiDEV56/DBwatch.git
+    cd DBwatch
+    go build -o dbwatch ./cmd/dbwatch
+    ./dbwatch start
+    ```
+
+    `make dist` cross-compiles the five release binaries into `dist/` from any one of those platforms. The Makefile and the demo scripts are bash. On Windows, run them under WSL2 or Git Bash.
+
+  </TabItem>
+</Tabs>
+
+<Aside type="note" title="Where databases are saved">
+However you installed it, databases you add inside the app are written to a per-user file, not next to the binary. On Linux that is `~/.config/dbwatch/databases.yaml`. The other platforms, and how flags layer on top of that file, are in [Configuration](/configuration/).
+</Aside>
+
+## Check that it runs
+
+```bash
+dbwatch help
+```
+
+You should see the `start` command and its flags. `dbwatch` with no arguments prints the same usage and exits with status 1.

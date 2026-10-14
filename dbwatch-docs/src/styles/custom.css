@@ -1,0 +1,187 @@
+/*
+  Layout stays a docs sidebar and a single reading column.
+  Color comes from dbwatch: the Gruvbox terminal background, the logo
+  blue, and the green status light on the top server.
+*/
+
+:root {
+	--sl-font: 'Geist', 'Inter', var(--sl-font-system);
+	--sl-font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+	--dbw-blue: #0070f0;
+	--dbw-blue-bright: #5aa7ff;
+	--dbw-green: #28e090;
+
+	--sl-color-white: #ebdbb2;
+	--sl-color-gray-1: #ebdbb2;
+	--sl-color-gray-2: #bdae93;
+	--sl-color-gray-3: #928374;
+	--sl-color-gray-4: #665c54;
+	--sl-color-gray-5: #3c3836;
+	--sl-color-gray-6: #282828;
+	--sl-color-gray-7: #1d2021;
+	--sl-color-black: #1d2021;
+
+	--sl-color-accent-low: #0d2c4d;
+	--sl-color-accent: var(--dbw-blue);
+	--sl-color-accent-high: var(--dbw-blue-bright);
+
+	--sl-color-text: #bdae93;
+	--sl-color-text-accent: var(--dbw-blue);
+	--sl-color-text-invert: #ffffff;
+	--sl-color-bg: #1d2021;
+	--sl-color-bg-nav: #1d2021;
+	--sl-color-bg-sidebar: #1d2021;
+	--sl-color-bg-inline-code: #282828;
+	--sl-color-bg-accent: var(--dbw-blue);
+	--sl-color-hairline-light: #32302f;
+	--sl-color-hairline: #3c3836;
+	--sl-color-hairline-shade: #1d2021;
+
+	--sl-color-backdrop-overlay: rgba(29, 32, 33, 0.72);
+	--sl-shadow-sm: none;
+	--sl-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+	--sl-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+
+	--sl-nav-height: 4rem;
+	--sl-sidebar-width: 16.5rem;
+	--sl-content-width: 44rem;
+	--sl-line-height: 1.65;
+	--sl-text-h1: 2.25rem;
+	--sl-text-h2: 1.5rem;
+	--sl-text-h3: 1.125rem;
+}
+
+:root[data-theme='light'] {
+	--sl-color-white: #1d2021;
+	--sl-color-gray-1: #1d2021;
+	--sl-color-gray-2: #3c3836;
+	--sl-color-gray-3: #665c54;
+	--sl-color-gray-4: #928374;
+	--sl-color-gray-5: #e8e4d9;
+	--sl-color-gray-6: #f4f1e8;
+	--sl-color-gray-7: #fbfaf6;
+	--sl-color-black: #ffffff;
+
+	--sl-color-accent-low: #e5f1ff;
+	--sl-color-accent: var(--dbw-blue);
+	--sl-color-accent-high: #004a9f;
+
+	--sl-color-text: #3c3836;
+	--sl-color-text-accent: var(--dbw-blue);
+	--sl-color-text-invert: #ffffff;
+	--sl-color-bg: #ffffff;
+	--sl-color-bg-nav: #ffffff;
+	--sl-color-bg-sidebar: #fbfaf6;
+	--sl-color-bg-inline-code: #f4f1e8;
+	--sl-color-bg-accent: var(--dbw-blue);
+	--sl-color-hairline-light: #f4f1e8;
+	--sl-color-hairline: #e8e4d9;
+	--sl-color-hairline-shade: #e8e4d9;
+
+	--sl-color-backdrop-overlay: rgba(29, 32, 33, 0.4);
+	--sl-shadow-md: 0 8px 24px rgba(29, 32, 33, 0.08);
+	--sl-shadow-lg: 0 16px 40px rgba(29, 32, 33, 0.12);
+}
+
+header.header {
+	border-bottom: 1px solid var(--sl-color-hairline);
+	background: var(--sl-color-bg);
+	box-shadow: inset 0 -2px 0 var(--dbw-blue);
+}
+
+.sidebar-pane {
+	border-inline-end: 1px solid var(--sl-color-hairline);
+}
+
+/* The logo already carries the blue. Keep the wordmark in the page color. */
+.site-title {
+	color: var(--sl-color-gray-1);
+}
+
+.site-title img {
+	height: 2.25rem;
+}
+
+.group-label .large {
+	font-size: 0.75rem;
+	font-weight: 500;
+	letter-spacing: 0.01em;
+	color: var(--sl-color-gray-3);
+}
+
+a[aria-current='page'] {
+	border-radius: 6px;
+	font-weight: 600;
+}
+
+#_top {
+	font-weight: 600;
+	letter-spacing: -0.03em;
+}
+
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+	letter-spacing: -0.02em;
+	font-weight: 600;
+	color: var(--sl-color-gray-1);
+}
+
+/* Body links use a lighter blue than the nav pill so they stay readable
+   on the dark terminal background. */
+:root .sl-markdown-content a:not(:where(.not-content *)) {
+	color: var(--dbw-blue-bright);
+}
+
+:root[data-theme='light'] .sl-markdown-content a:not(:where(.not-content *)) {
+	color: var(--dbw-blue);
+}
+
+.sl-markdown-content a:hover:not(:where(.not-content *)) {
+	color: var(--dbw-green);
+}
+
+.sl-markdown-content :is(code):not(:where(.not-content *)) {
+	border-radius: 4px;
+	color: var(--sl-color-gray-1);
+}
+
+.expressive-code {
+	margin-block: 1.25rem;
+}
+
+.expressive-code figure {
+	border: 1px solid var(--sl-color-hairline) !important;
+	border-radius: 8px;
+	box-shadow: none;
+}
+
+.sl-link-card {
+	border-radius: 8px !important;
+	box-shadow: none !important;
+	transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sl-link-card:hover {
+	border-color: var(--dbw-blue) !important;
+	background: var(--sl-color-gray-6);
+}
+
+:root[data-theme='light'] .sl-link-card:hover {
+	background: var(--sl-color-accent-low);
+}
+
+starlight-tabs .tab {
+	border-radius: 6px;
+}
+
+site-search button[data-open-modal] {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 8px;
+	background: transparent;
+}
+
+site-search button[data-open-modal]:focus-visible,
+.sl-markdown-content a:focus-visible {
+	outline-color: var(--dbw-blue);
+}

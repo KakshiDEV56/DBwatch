@@ -1,0 +1,57 @@
+---
+title: Getting started
+description: Install dbwatch and point it at PostgreSQL. The first run opens a welcome screen where you paste a connection string.
+---
+
+import { Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+dbwatch watches PostgreSQL's own statistics views and shows, in your terminal, the specific condition that is making a database unhealthy: connection pressure, a falling cache hit ratio, a lock, a transaction left open.
+
+It is a terminal UI. You run it on your laptop, or in a container, and it connects out to the databases you add.
+
+## Prerequisites
+
+- PostgreSQL 13 or newer as the database you want to watch
+- A connection string for a role that can read statistics. [`pg_read_all_stats`](/guides/databases/#which-role-to-use) (or a superuser) sees every backend. A normal role only sees its own sessions, so several panels will under-report.
+- `pg_stat_statements` loaded on the server if you want the [Top queries](/monitoring/queries/) panel. dbwatch tries to create the extension on connect.
+
+You do not need Go, Docker, or a config file for the first run. Those are optional install and demo paths.
+
+## Install and start
+
+<Steps>
+
+1. Install dbwatch with whichever path fits the machine. The [installation guide](/installation/) covers a prebuilt binary, `go install`, a container image, and a build from source.
+
+   ```bash
+   dbwatch start
+   ```
+
+2. On the welcome screen, paste a Postgres connection string and press Enter.
+
+   ```text
+   postgres://user:password@localhost:5432/app
+   ```
+
+   A malformed string is rejected immediately. A valid string for a database that is currently down is still added, shown as connecting, and retried on every poll.
+
+3. dbwatch saves that database and loads it the next time you start the app. Add another with `a`. Remove the selected one with `d`, which asks for confirmation first.
+
+</Steps>
+
+Press `?` inside the app for the same guide, and `q` to quit. On the welcome screen, when no database is configured yet, `Esc` quits as well.
+
+## What you are looking at
+
+The left column is the monitoring panels for the selected database. The table under the header lists every database you have added. The bottom panel is the event log for the panel that has focus. Live mode polls on an interval (10 seconds by default). `m` pauses that so the screen holds still.
+
+Each panel maps onto one status: healthy, warning, degraded, critical, or offline. The exact cutoffs are in [Thresholds](/reference/thresholds/).
+
+## Next
+
+<CardGrid>
+	<LinkCard title="Installation" href="/installation/" description="Binary, Go, Docker, or source." />
+	<LinkCard title="Connection strings" href="/connection-strings/" description="URL shape, SSL, and passwords with special characters." />
+	<LinkCard title="Dashboard" href="/monitoring/" description="How the panels, database list, and logs fit together." />
+	<LinkCard title="Changelog" href="/changelog/" description="What shipped in 0.0.1 and 0.0.2." />
+</CardGrid>
